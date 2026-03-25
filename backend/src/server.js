@@ -58,6 +58,8 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization']
 }
 
+
+
 app.use(cors(corsOptions))
 
 // Necesario para Webhook de Wompi: recibir raw body

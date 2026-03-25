@@ -1,4 +1,5 @@
 import supabase from "../../config/supabaseClient.js";
+import { v4 as uuidv4 } from "uuid";
 
 class StoriesService {
   async getPeopleWithStories({ venue_id }) {
@@ -96,6 +97,56 @@ class StoriesService {
 
     if (error) throw new Error(error.message);
     return data || [];
+  }
+
+  // Al inicio del archivo ya tienes estos imports, no los dupliques:
+// import supabase from "../../config/supabaseClient.js";
+// import { v4 as uuidv4 } from "uuid";
+
+  async uploadStory({ file, user_id, venue_id, venue_category }) {
+    const ext = file.originalname.split(".").pop().toLowerCase();
+    const fileName = `stories/${user_id}/${uuidv4()}.${ext}`;
+
+    // 1) Subir a Supabase Storage (bucket: "stories")
+    const { error: uploadError } = await supabase.storage
+      .from("stories")
+      .upload(fileName, file.buffer, {
+        contentType: file.mimetype,
+        upsert: false,
+      });
+
+    if (uploadError) throw new Error(uploadError.message);
+
+    // 2) URL pública
+    const { data: urlData } = supabase.storage
+      .from("stories")
+      .getPublicUrl(fileName);
+
+    const media_url = urlData.publicUrl;
+
+    // 3) Insertar en tabla stories — expira en 24h
+    const expires_at = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+
+    const { data, error: insertError } = await supabase
+      .from("stories")
+      .insert({ user_id, venue_id, venue_category: venue_category ?? "bares", media_url, expires_at })
+      .select()
+      .single();
+
+    if (insertError) throw new Error(insertError.message);
+    return data;
+  }
+
+  async registerView({ story_id, viewer_user_id }) {
+    const { error } = await supabase
+      .from("story_views")
+      .upsert(
+        { story_id, viewer_user_id },
+        { onConflict: "story_id,viewer_user_id" }
+      );
+
+    if (error) throw new Error(error.message);
+    return { ok: true };
   }
 }
 
