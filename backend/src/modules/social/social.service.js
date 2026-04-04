@@ -1,16 +1,23 @@
 import supabase from '../../config/supabaseClient.js'
 
-
 class SocialService {
   /**
    * Obtiene presencia de usuarios y calcula si están en línea.
+   * Filtra por venue cuando se envía venue_id.
+   * @param {{ venue_id?: number | null }} params
    * @returns {Promise<Array<{user_id:number,nombre:string|null,foto:string|null,isOnline:boolean}>>}
    */
-  async getActiveUsers() {
-    const { data: presenceRows, error: presenceError } = await supabase
+  async getActiveUsers({ venue_id = null } = {}) {
+    let presenceQuery = supabase
       .from('user_presence')
-      .select('user_id, last_heartbeat_at')
+      .select('user_id, venue_id, last_heartbeat_at')
       .order('last_heartbeat_at', { ascending: false })
+
+    if (venue_id) {
+      presenceQuery = presenceQuery.eq('venue_id', venue_id)
+    }
+
+    const { data: presenceRows, error: presenceError } = await presenceQuery
 
     if (presenceError) throw new Error(presenceError.message)
 
@@ -34,35 +41,37 @@ class SocialService {
     const usersById = new Map((users || []).map(user => [user.id_usuario, user]))
     const nowMs = Date.now()
 
-    return userIds.map(userId => {
+    return userIds.map((userId) => {
       const presence = latestPresenceByUser.get(userId)
       const user = usersById.get(userId)
-      const lastHeartbeat = presence?.last_heartbeat_at ? new Date(presence.last_heartbeat_at).getTime() : 0
+      const lastHeartbeat = presence?.last_heartbeat_at
+        ? new Date(presence.last_heartbeat_at).getTime()
+        : 0
 
       return {
         user_id: userId,
         nombre: user?.nombre ?? null,
-        foto: user?.foto ?? null,
-        isOnline: nowMs - lastHeartbeat < 300000
+        foto: user?.foto_url ?? null,
+        isOnline: nowMs - lastHeartbeat < 300000,
       }
     })
   }
 
-    async heartbeat({ user_id, table_id }) {
+  async heartbeat({ user_id, venue_id, table_id }) {
     const { error } = await supabase
       .from('user_presence')
       .upsert(
         {
           user_id,
+          venue_id,
           table_id,
-          last_heartbeat_at: new Date().toISOString()
+          last_heartbeat_at: new Date().toISOString(),
         },
         { onConflict: 'user_id' }
       )
 
     if (error) throw new Error(error.message)
   }
-
 }
 
 export default new SocialService()

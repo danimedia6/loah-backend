@@ -16,6 +16,9 @@ import adminRoutes from './routes/admin.routes.js'
 import debugRoutes from './routes/debug.routes.js'
 import wompiRoutes from './routes/wompi.routes.js'
 import socialRoutes from './modules/social/social.routes.js'
+import giftsRouter from "./modules/social/gifts.router.js";
+import venuesRoutes from "./modules/social/venues.routes.js";
+
 
 
 
@@ -86,9 +89,11 @@ app.use('/api/wompi', wompiRoutes)
 app.use('/api/admin', adminRoutes)
 // Debug routes (local only) - no auth. Remove before deploying.
 app.use('/api/debug', debugRoutes)
+app.use("/api/social/gifts", giftsRouter);
+app.use("/api/social/venues", venuesRoutes);
 
 
-
+ 
 
 
 // Export app for testing; only listen when not in test environment

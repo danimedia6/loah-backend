@@ -72,6 +72,24 @@ export async function uploadStory(req, res) {
   }
 }
 
+
+
+export async function toggleLike(req, res) {
+  try {
+    const story_id = Number(req.params.id);
+    const user_id = Number(req.body.user_id);
+
+    if (!story_id || !user_id)
+      return res.status(400).json({ error: "story_id y user_id son requeridos" });
+
+    const result = await storiesService.toggleLike({ story_id, user_id });
+    return res.json(result);
+  } catch (error) {
+    console.error("Error toggleLike:", error);
+    return res.status(500).json({ error: error.message });
+  }
+}
+
 export async function registerView(req, res) {
   try {
     const story_id = Number(req.params.id);
@@ -84,6 +102,32 @@ export async function registerView(req, res) {
     return res.json(result);
   } catch (error) {
     console.error("Error registerView:", error);
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+export async function getStoryViews(req, res) {
+  try {
+    const story_id = Number(req.params.id);
+    if (!story_id) return res.status(400).json({ error: "story_id requerido" });
+
+    const result = await storiesService.getStoryViews({ story_id });
+    return res.json(result);
+  } catch (error) {
+    console.error("Error getStoryViews:", error);
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+export async function getStoryLikes(req, res) {
+  try {
+    const story_id = Number(req.params.id);
+    if (!story_id) return res.status(400).json({ error: "story_id requerido" });
+
+    const result = await storiesService.getStoryLikes({ story_id });
+    return res.json(result);
+  } catch (error) {
+    console.error("Error getStoryLikes:", error);
     return res.status(500).json({ error: error.message });
   }
 }

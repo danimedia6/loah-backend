@@ -1,9 +1,13 @@
 import socialService from './social.service.js'
 
-
 export const getActiveUsers = async (req, res) => {
   try {
-    const activeUsers = await socialService.getActiveUsers()
+    const { venue_id } = req.query
+
+    const activeUsers = await socialService.getActiveUsers({
+      venue_id: venue_id ? Number(venue_id) : null,
+    })
+
     res.json(activeUsers)
   } catch (error) {
     console.error('Error al obtener usuarios activos:', error)
@@ -13,11 +17,22 @@ export const getActiveUsers = async (req, res) => {
 
 export async function heartbeat(req, res) {
   try {
-    const { user_id, table_id } = req.body
+    const { user_id, venue_id, table_id } = req.body
 
-    if (!user_id) return res.status(400).json({ error: 'user_id es requerido' })
+    if (!user_id) {
+      return res.status(400).json({ error: 'user_id es requerido' })
+    }
 
-    await socialService.heartbeat({ user_id, table_id: table_id ?? null })
+    if (!venue_id) {
+      return res.status(400).json({ error: 'venue_id es requerido' })
+    }
+
+    await socialService.heartbeat({
+      user_id: Number(user_id),
+      venue_id: Number(venue_id),
+      table_id: table_id ?? null,
+    })
+
     return res.json({ ok: true })
   } catch (error) {
     console.error('Error en heartbeat:', error)
