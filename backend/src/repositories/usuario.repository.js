@@ -18,6 +18,7 @@ class UsuarioRepository {
         nombre,
         correo,
         rol,
+        venue_id,
         fecha_registro
       `)
       .order('nombre', { ascending: true })
@@ -40,6 +41,7 @@ class UsuarioRepository {
         nombre,
         correo,
         rol,
+        venue_id,
         fecha_registro
       `)
       .eq('id_usuario', id)
@@ -64,6 +66,7 @@ class UsuarioRepository {
         correo,
         contrasena_hash,
         rol,
+        venue_id,
         fecha_registro
       `)
       .eq('correo', correo)
@@ -88,6 +91,7 @@ class UsuarioRepository {
         nombre,
         correo,
         rol,
+        venue_id,
         fecha_registro
       `)
       .single()
@@ -113,6 +117,7 @@ class UsuarioRepository {
         nombre,
         correo,
         rol,
+        venue_id,
         fecha_registro
       `)
       .single()

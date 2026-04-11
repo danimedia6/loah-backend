@@ -60,14 +60,21 @@ export async function generatePdfBuffer (url, size = 300) {
  * @returns {Promise<Object>} { buffer, contentType, filename, publicUrl }
  */
 export async function generateAndUploadQr(mesaId, format, venueId) {
-  // Validate mesa
-  const mesa = await mesaRepository.findById(mesaId)
-  if (!mesa) throw new Error('Mesa no encontrada')
+  let mesa = null
 
-  // Build URL
-  const venue = venueId || process.env.VENUE_ID || '1'
-  const CLIENT_URL = process.env.CLIENT_URL || 'http://localhost:5173'
-  const url = `${CLIENT_URL}/m/${encodeURIComponent(venue)}/table/${encodeURIComponent(String(mesa.id_mesa))}`
+  if (mesaId) {
+    mesa = await mesaRepository.findById(mesaId)
+    if (!mesa) throw new Error('Mesa no encontrada')
+  }
+
+  const venue = venueId
+  if (!venue) throw new Error("Venue requerido para generar QR")
+  
+
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'
+  const url = mesa
+  ? `${FRONTEND_URL}/m/${encodeURIComponent(venue)}/table/${encodeURIComponent(String(mesa.id_mesa))}`
+  : `${FRONTEND_URL}/m/${encodeURIComponent(venue)}`
 
   let buffer
   let contentType
@@ -83,12 +90,19 @@ export async function generateAndUploadQr(mesaId, format, venueId) {
     ext = 'png'
   }
 
+  const filename = mesa
+  ? `mesa-${mesa.id_mesa}-qr.${ext}`
+  : `venue-${venue}-qr.${ext}`
+  
+
   const saveToStorage = (process.env.SAVE_QR_TO_STORAGE || 'true') === 'true'
   let publicUrl = null
 
   if (saveToStorage) {
     const bucket = process.env.QR_BUCKET || 'qr-codes'
-    const path = `mesas/mesa-${mesa.id_mesa}/qr-${Date.now()}.${ext}`
+    const path = mesa
+      ? `mesas/mesa-${mesa.id_mesa}/qr-${Date.now()}.${ext}`
+      : `venues/venue-${venue}/qr-${Date.now()}.${ext}`
     const { error: uploadErr } = await supabase.storage
       .from(bucket)
       .upload(path, buffer, { upsert: true, contentType })
@@ -101,5 +115,5 @@ export async function generateAndUploadQr(mesaId, format, venueId) {
     }
   }
 
-  return { buffer, contentType, filename: `mesa-${mesa.id_mesa}-qr.${ext}`, publicUrl }
+  return { buffer, contentType, filename, publicUrl, url }
 }
