@@ -21,7 +21,7 @@ export async function sendGift(req, res) {
 
 export async function respondGift(req, res) {
   try {
-    const gift_id     = Number(req.params.id);
+    const gift_id = req.params.id;
     const { receiver_id, response, message } = req.body;
 
     if (!gift_id || !receiver_id || !response)
@@ -83,5 +83,40 @@ export async function toggleReaction(req, res) {
   } catch (error) {
     console.error("Error toggleReaction:", error);
     return res.status(500).json({ error: error.message });
+  }
+}
+
+export async function getRedeemGift(req, res) {
+  try {
+    const { token } = req.params;
+
+    const gift = await giftsService.getRedeemGiftByToken({ token });
+
+    return res.json(gift);
+  } catch (error) {
+    console.error("Error getRedeemGift:", error);
+    return res.status(400).json({ error: error.message });
+  }
+}
+
+export async function redeemGift(req, res) {
+  try {
+    const { token } = req.params;
+
+    const admin_id = req.user?.id || req.user?.id_usuario;
+
+    if (!admin_id) {
+      return res.status(401).json({ error: "No autenticado" });
+    }
+
+    const result = await giftsService.redeemGiftByToken({
+      token,
+      admin_id,
+    });
+
+    return res.json(result);
+  } catch (error) {
+    console.error("Error redeemGift:", error);
+    return res.status(400).json({ error: error.message });
   }
 }
