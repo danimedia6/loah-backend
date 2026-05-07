@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import supabase from "../../config/supabaseClient.js";
+import chatService from "./chat.service.js";
 
 class GiftsService {
 
@@ -143,7 +144,28 @@ class GiftsService {
 
     if (response !== "declined") {
       redeemToken = crypto.randomUUID();
-      redeemExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000); // 2 horas
+      redeemExpiresAt = new Date(Date.now() + 2 * 60 * 60 * 1000);
+    }
+
+    let conversation = null;
+
+    if (response !== "declined") {
+      // 🔹 Si es chat → crear conversación
+      if (response === "accepted_chat") {
+        conversation = await chatService.createConversationFromGift({
+          gift,
+          firstMessage: message,
+        });
+
+        // guardar relación en gift
+        await supabase
+          .from("gifts")
+          .update({ conversation_id: conversation.id })
+          .eq("id", gift.id);
+      }
+
+      // 🔹 (por ahora dejamos esto comentado si ya migraste a QR)
+      // await this._createGiftOrder(gift);
     }
 
     const updatePayload = {
@@ -171,6 +193,7 @@ class GiftsService {
       status: response,
       redeem_token: redeemToken,
       redeem_expires_at: redeemExpiresAt?.toISOString() ?? null,
+      conversation_id: conversation?.id ?? null,
     };
   }
 
