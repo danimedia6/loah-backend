@@ -19,6 +19,7 @@ import socialRoutes from './modules/social/social.routes.js'
 import giftsRouter from "./modules/social/gifts.router.js";
 import venuesRoutes from "./modules/social/venues.routes.js";
 import chatRoutes from "./modules/social/chat.routes.js";
+import socialProfileRoutes from "./modules/social/social-profile.routes.js";
 
 
 
@@ -93,6 +94,7 @@ app.use('/api/debug', debugRoutes)
 app.use("/api/social/gifts", giftsRouter);
 app.use("/api/social/venues", venuesRoutes);
 app.use("/api/social/chat", chatRoutes);
+app.use("/api/social/profile", socialProfileRoutes);
 
 
  
