@@ -7,7 +7,8 @@ import { getPeopleWithStories,
          upload,
          toggleLike,
          getStoryViews, 
-         getStoryLikes
+         getStoryLikes,
+         toggleReaction
          } from "./stories.controller.js";
 
 const router = Router();
@@ -20,4 +21,5 @@ router.post("/:id/view", registerView);
 router.post("/:id/like", toggleLike);
 router.get("/:id/views", getStoryViews);
 router.get("/:id/likes", getStoryLikes);
+router.post("/:id/reaction", toggleReaction);
 export default router;

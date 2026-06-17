@@ -201,7 +201,7 @@ class StoriesService {
 
   const { data: users, error: usersError } = await supabase
     .from("usuarios")
-    .select("id_usuario, nombre, foto_url")
+    .select("id_usuario, nombre")
     .in("id_usuario", userIds);
 
   if (usersError) throw new Error(usersError.message);
@@ -211,7 +211,7 @@ class StoriesService {
   return (data || []).map(v => ({
     user_id: v.viewer_user_id,
     nombre: usersById.get(v.viewer_user_id)?.nombre ?? null,
-    foto: usersById.get(v.viewer_user_id)?.foto_url ?? null,
+    foto:  null,
     viewed_at: v.viewed_at,
   }));
 }
@@ -230,7 +230,7 @@ class StoriesService {
 
     const { data: users, error: usersError } = await supabase
       .from("usuarios")
-      .select("id_usuario, nombre, foto_url")
+      .select("id_usuario, nombre")
       .in("id_usuario", userIds);
 
     if (usersError) throw new Error(usersError.message);
@@ -240,7 +240,7 @@ class StoriesService {
     return (data || []).map(l => ({
       user_id: l.user_id,
       nombre: usersById.get(l.user_id)?.nombre ?? null,
-      foto: usersById.get(l.user_id)?.foto_url ?? null,
+      foto: null,
       liked_at: l.created_at,
     }));
   }
@@ -300,6 +300,33 @@ class StoriesService {
       reaction:  r.reaction,
       created_at: r.created_at,
     }));
+  }
+
+  async getStoryById({ story_id }) {
+    const { data, error } = await supabase
+      .from("stories")
+      .select(`
+        id,
+        user_id,
+        venue_id,
+        venue_category,
+        media_url,
+        created_at,
+        expires_at,
+        view_count:story_views(count),
+        like_count:story_likes(count)
+      `)
+      .eq("id", story_id)
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    if (!data) return null;
+
+    return {
+      ...data,
+      view_count: data.view_count?.[0]?.count ?? 0,
+      like_count: data.like_count?.[0]?.count ?? 0,
+    };
   }
 
 }

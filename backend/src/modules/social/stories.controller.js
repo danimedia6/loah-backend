@@ -1,5 +1,8 @@
 import storiesService from "./stories.service.js";
 import multer from "multer";
+import { getIO } from '../../sockets/socketStore.js'
+
+
 
 
 export const upload = multer({
@@ -61,10 +64,30 @@ export async function uploadStory(req, res) {
 
     if (!user_id || !venue_id)
       return res.status(400).json({ error: "user_id y venue_id son requeridos" });
+
     if (!req.file)
       return res.status(400).json({ error: "No se recibió ningún archivo" });
 
-    const story = await storiesService.uploadStory({ file: req.file, user_id, venue_id, venue_category });
+    const story = await storiesService.uploadStory({
+      file: req.file,
+      user_id,
+      venue_id,
+      venue_category,
+    });
+
+    const peopleWithStories = await storiesService.getPeopleWithStories({ venue_id });
+    const userStories = await storiesService.getStoriesByUser({ venue_id, user_id });
+
+    const io = getIO();
+
+    io?.to(`venue:${venue_id}`).emit("stories:created", {
+      venue_id,
+      user_id,
+      story,
+      peopleWithStories,
+      userStories,
+    });
+
     return res.status(201).json(story);
   } catch (error) {
     console.error("Error uploadStory:", error);
@@ -83,6 +106,20 @@ export async function toggleLike(req, res) {
       return res.status(400).json({ error: "story_id y user_id son requeridos" });
 
     const result = await storiesService.toggleLike({ story_id, user_id });
+
+    const story = await storiesService.getStoryById({ story_id });
+
+    const io = getIO();
+
+    if (story) {
+      io?.to(`venue:${story.venue_id}`).emit("story:liked", {
+        story_id,
+        user_id,
+        liked: result.liked,
+        story,
+      });
+    }
+
     return res.json(result);
   } catch (error) {
     console.error("Error toggleLike:", error);
@@ -99,6 +136,19 @@ export async function registerView(req, res) {
       return res.status(400).json({ error: "story_id y viewer_user_id son requeridos" });
 
     const result = await storiesService.registerView({ story_id, viewer_user_id });
+
+    const story = await storiesService.getStoryById({ story_id });
+
+    const io = getIO();
+
+    if (story) {
+      io?.to(`user:${story.user_id}`).emit("story:viewed", {
+        story_id,
+        viewer_user_id,
+        story,
+      });
+    }
+
     return res.json(result);
   } catch (error) {
     console.error("Error registerView:", error);
@@ -128,6 +178,40 @@ export async function getStoryLikes(req, res) {
     return res.json(result);
   } catch (error) {
     console.error("Error getStoryLikes:", error);
+    return res.status(500).json({ error: error.message });
+  }
+}
+
+export async function toggleReaction(req, res) {
+  try {
+    const story_id = Number(req.params.id);
+    const { user_id, reaction } = req.body;
+
+    if (!story_id || !user_id || !reaction)
+      return res.status(400).json({ error: "story_id, user_id y reaction son requeridos" });
+
+    const result = await storiesService.toggleReaction({
+      story_id,
+      user_id: Number(user_id),
+      reaction,
+    });
+
+    const story = await storiesService.getStoryById({ story_id });
+
+    const io = getIO();
+
+    if (story) {
+      io?.to(`venue:${story.venue_id}`).emit("story:reaction-updated", {
+        story_id,
+        user_id: Number(user_id),
+        reaction: result.reaction,
+        story,
+      });
+    }
+
+    return res.json(result);
+  } catch (error) {
+    console.error("Error toggleReaction:", error);
     return res.status(500).json({ error: error.message });
   }
 }
