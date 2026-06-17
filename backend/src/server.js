@@ -21,6 +21,10 @@ import venuesRoutes from "./modules/social/venues.routes.js";
 import chatRoutes from "./modules/social/chat.routes.js";
 import socialProfileRoutes from "./modules/social/social-profile.routes.js";
 
+import http from 'http'
+import { Server } from 'socket.io'
+import { setupSocialSocket } from './sockets/social.socket.js'
+
 
 
 
@@ -100,11 +104,20 @@ app.use("/api/social/profile", socialProfileRoutes);
  
 
 
-// Export app for testing; only listen when not in test environment
+const httpServer = http.createServer(app)
+
+const io = new Server(httpServer, {
+  cors: corsOptions,
+})
+
+setupSocialSocket(io)
+
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(process.env.PORT || 4000, () => {
+  httpServer.listen(process.env.PORT || 4000, () => {
     console.log(`🚀 Servidor corriendo en puerto ${process.env.PORT || 4000}`)
+    console.log('🔌 WebSockets activos con Socket.io')
   })
 }
 
+export { app, httpServer, io }
 export default app

@@ -1,5 +1,6 @@
 import supabase from '../../config/supabaseClient.js'
 
+
 class SocialService {
   /**
    * Obtiene presencia de usuarios y calcula si están en línea.
@@ -7,56 +8,92 @@ class SocialService {
    * @param {{ venue_id?: number | null }} params
    * @returns {Promise<Array<{user_id:number,nombre:string|null,foto:string|null,isOnline:boolean}>>}
    */
-  async getActiveUsers({ venue_id = null } = {}) {
-    let presenceQuery = supabase
-      .from('user_presence')
-      .select('user_id, venue_id, last_heartbeat_at')
-      .order('last_heartbeat_at', { ascending: false })
+ async getActiveUsers({ venue_id = null } = {}) {
+  let presenceQuery = supabase
+    .from("user_presence")
+    .select("user_id, venue_id, last_heartbeat_at")
+    .order("last_heartbeat_at", { ascending: false });
 
-    if (venue_id) {
-      presenceQuery = presenceQuery.eq('venue_id', venue_id)
-    }
-
-    const { data: presenceRows, error: presenceError } = await presenceQuery
-
-    if (presenceError) throw new Error(presenceError.message)
-
-    const latestPresenceByUser = new Map()
-    for (const row of presenceRows || []) {
-      if (!latestPresenceByUser.has(row.user_id)) {
-        latestPresenceByUser.set(row.user_id, row)
-      }
-    }
-
-    const userIds = [...latestPresenceByUser.keys()]
-    if (!userIds.length) return []
-
-    const { data: users, error: usersError } = await supabase
-      .from('usuarios')
-      .select('id_usuario, nombre')
-      .in('id_usuario', userIds)
-
-    if (usersError) throw new Error(usersError.message)
-
-    const usersById = new Map((users || []).map(user => [user.id_usuario, user]))
-    const nowMs = Date.now()
-
-    return userIds.map((userId) => {
-      const presence = latestPresenceByUser.get(userId)
-      const user = usersById.get(userId)
-      const lastHeartbeat = presence?.last_heartbeat_at
-        ? new Date(presence.last_heartbeat_at).getTime()
-        : 0
-
-      return {
-        user_id: userId,
-        nombre: user?.nombre ?? null,
-        foto: user?.foto_url ?? null,
-        isOnline: nowMs - lastHeartbeat < 300000,
-      }
-    })
+  if (venue_id) {
+    presenceQuery = presenceQuery.eq("venue_id", venue_id);
   }
 
+  const { data: presenceRows, error: presenceError } = await presenceQuery;
+
+  if (presenceError) throw new Error(presenceError.message);
+
+  const latestPresenceByUser = new Map();
+
+  for (const row of presenceRows || []) {
+    if (!latestPresenceByUser.has(row.user_id)) {
+      latestPresenceByUser.set(row.user_id, row);
+    }
+  }
+
+  const userIds = [...latestPresenceByUser.keys()];
+  if (!userIds.length) return [];
+
+  const { data: users, error: usersError } = await supabase
+    .from("usuarios")
+    .select("id_usuario, nombre")
+    .in("id_usuario", userIds);
+
+  if (usersError) throw new Error(usersError.message);
+
+  const { data: profiles, error: profilesError } = await supabase
+    .from("social_profiles")
+    .select(`
+      user_id,
+      display_name,
+      bio,
+      mood,
+      favorite_drink,
+      instagram,
+      tags,
+      allow_gifts,
+      allow_chat
+    `)
+    .in("user_id", userIds);
+
+  if (profilesError) throw new Error(profilesError.message);
+
+  const usersById = new Map(
+    (users || []).map((user) => [Number(user.id_usuario), user])
+  );
+
+  const profilesByUserId = new Map(
+    (profiles || []).map((profile) => [Number(profile.user_id), profile])
+  );
+
+  const nowMs = Date.now();
+
+  return userIds.map((userId) => {
+    const presence = latestPresenceByUser.get(userId);
+    const user = usersById.get(Number(userId));
+    const profile = profilesByUserId.get(Number(userId));
+
+    const lastHeartbeat = presence?.last_heartbeat_at
+      ? new Date(presence.last_heartbeat_at).getTime()
+      : 0;
+
+    return {
+      user_id: Number(userId),
+      nombre: profile?.display_name || user?.nombre || "Usuario",
+      real_nombre: user?.nombre ?? null,
+      foto: user?.foto_url ?? null,
+      isOnline: nowMs - lastHeartbeat < 300000,
+
+      display_name: profile?.display_name ?? null,
+      bio: profile?.bio ?? null,
+      mood: profile?.mood ?? "Disponible 🍻",
+      favorite_drink: profile?.favorite_drink ?? null,
+      instagram: profile?.instagram ?? null,
+      tags: profile?.tags ?? [],
+      allow_gifts: profile?.allow_gifts ?? true,
+      allow_chat: profile?.allow_chat ?? true,
+    };
+  });
+}
   async heartbeat({ user_id, venue_id, table_id }) {
     const { error } = await supabase
       .from('user_presence')
