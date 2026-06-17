@@ -24,6 +24,7 @@ import socialProfileRoutes from "./modules/social/social-profile.routes.js";
 import http from 'http'
 import { Server } from 'socket.io'
 import { setupSocialSocket } from './sockets/social.socket.js'
+import { setIO } from './sockets/socketStore.js'
 
 
 
@@ -101,6 +102,9 @@ app.use("/api/social/chat", chatRoutes);
 app.use("/api/social/profile", socialProfileRoutes);
 
 
+
+
+
  
 
 
@@ -109,6 +113,8 @@ const httpServer = http.createServer(app)
 const io = new Server(httpServer, {
   cors: corsOptions,
 })
+
+setIO(io)
 
 setupSocialSocket(io)
 

@@ -1,4 +1,5 @@
 import giftsService from "./gifts.service.js";
+import { getIO } from '../../sockets/socketStore.js'
 
 export async function sendGift(req, res) {
   try {
@@ -12,6 +13,11 @@ export async function sendGift(req, res) {
       receiver_id: Number(receiver_id),
       product_id:  Number(product_id),
     });
+    
+    const io = getIO();
+
+    io?.to(`user:${receiver_id}`).emit('gift:created', result);
+
     return res.status(201).json(result);
   } catch (error) {
     console.error("Error sendGift:", error);
@@ -33,6 +39,26 @@ export async function respondGift(req, res) {
       response,
       message,
     });
+
+
+    const io = getIO();
+
+    const { default: giftsServiceInstance } = await import('./gifts.service.js');
+
+    const pendingGifts = await giftsServiceInstance.getPendingGifts({
+      receiver_id: Number(receiver_id),
+    });
+
+    io?.to(`user:${receiver_id}`).emit(
+      'gift:pending-updated',
+      pendingGifts
+    );
+
+    io?.to(`user:${receiver_id}`).emit(
+      'gift:responded',
+      result
+    );
+
     return res.json(result);
   } catch (error) {
     console.error("Error respondGift:", error);
