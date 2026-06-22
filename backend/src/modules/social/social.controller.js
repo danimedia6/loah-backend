@@ -2,10 +2,11 @@ import socialService from './social.service.js'
 
 export const getActiveUsers = async (req, res) => {
   try {
-    const { venue_id } = req.query
+    const { venue_id, user_id } = req.query
 
     const activeUsers = await socialService.getActiveUsers({
       venue_id: venue_id ? Number(venue_id) : null,
+      user_id: user_id ? Number(user_id) : null,
     })
 
     res.json(activeUsers)

@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import supabase from "../../config/supabaseClient.js";
 import chatService from "./chat.service.js";
+import safetyService from "./safety.service.js";
 
 class GiftsService {
 
@@ -73,6 +74,8 @@ class GiftsService {
 
   // Remitente envía un obsequio — solo guarda en gifts, NO toca pedidos aún
   async sendGift({ story_id, sender_id, receiver_id, product_id }) {
+    await safetyService.assertCanInteract(sender_id, receiver_id);
+
     await this._validateActivePresence({ sender_id, receiver_id });
 
     const { data: product, error: productError } = await supabase
@@ -152,6 +155,8 @@ class GiftsService {
     if (response !== "declined") {
       // 🔹 Si es chat → crear conversación
       if (response === "accepted_chat") {
+        await safetyService.assertCanInteract(gift.sender_id, gift.receiver_id);
+
         conversation = await chatService.createConversationFromGift({
           gift,
           firstMessage: message,

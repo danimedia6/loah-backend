@@ -74,11 +74,16 @@ export function setupSocialSocket(io) {
       table_id: finalTableId,
     })
 
-    const activeUsers = await socialService.getActiveUsers({
-      venue_id: Number(finalVenueId),
-    })
+    const socketsInVenue = await io.in(`venue:${finalVenueId}`).fetchSockets()
 
-    io.to(`venue:${finalVenueId}`).emit('presence:update', activeUsers)
+      for (const venueSocket of socketsInVenue) {
+        const activeUsers = await socialService.getActiveUsers({
+          venue_id: Number(finalVenueId),
+          user_id: venueSocket.data.user_id,
+        })
+
+        venueSocket.emit('presence:update', activeUsers)
+      }
     } catch (error) {
         console.error('❌ Error en social:join-venue:', error.message)
         socket.emit('presence:error', { error: error.message })
@@ -101,11 +106,16 @@ export function setupSocialSocket(io) {
         table_id: finalTableId,
         })
 
-        const activeUsers = await socialService.getActiveUsers({
-        venue_id: Number(finalVenueId),
-        })
+        const socketsInVenue = await io.in(`venue:${finalVenueId}`).fetchSockets()
 
-        io.to(`venue:${finalVenueId}`).emit('presence:update', activeUsers)
+          for (const venueSocket of socketsInVenue) {
+            const activeUsers = await socialService.getActiveUsers({
+              venue_id: Number(finalVenueId),
+              user_id: venueSocket.data.user_id,
+            })
+
+            venueSocket.emit('presence:update', activeUsers)
+          }
     } catch (error) {
         console.error('❌ Error en presence:heartbeat:', error.message)
         socket.emit('presence:error', { error: error.message })

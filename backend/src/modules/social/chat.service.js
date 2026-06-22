@@ -1,4 +1,5 @@
 import supabase from "../../config/supabaseClient.js";
+import safetyService from "./safety.service.js";
 
 class ChatService {
   async createConversationFromGift({ gift, firstMessage }) {
@@ -85,71 +86,92 @@ class ChatService {
     return conversation;
     }
 
-  async getConversationsByUser({ user_id }) {
-    const { data, error } = await supabase
+    async getConversationsByUser({ user_id }) {
+      const blockedRelations = await safetyService.getBlockedRelationsForUser(user_id);
+
+      const blockedUserIds = new Set(
+        blockedRelations.map((relation) =>
+          Number(relation.blocker_id) === Number(user_id)
+            ? Number(relation.blocked_id)
+            : Number(relation.blocker_id)
+        )
+      );
+
+      const { data, error } = await supabase
         .from("conversations")
         .select(`
-        id,
-        gift_id,
-        venue_id,
-        user_one_id,
-        user_two_id,
-        created_at,
-        updated_at
+          id,
+          gift_id,
+          venue_id,
+          user_one_id,
+          user_two_id,
+          created_at,
+          updated_at
         `)
         .or(`user_one_id.eq.${user_id},user_two_id.eq.${user_id}`)
         .order("updated_at", { ascending: false });
 
-    if (error) throw new Error(error.message);
-    if (!data?.length) return [];
+      if (error) throw new Error(error.message);
+      if (!data?.length) return [];
 
-    const conversationIds = data.map((c) => c.id);
+      const visibleConversations = data.filter((conv) => {
+        const otherUserId =
+          Number(conv.user_one_id) === Number(user_id)
+            ? Number(conv.user_two_id)
+            : Number(conv.user_one_id);
 
-    const otherUserIds = data.map((conv) =>
+        return !blockedUserIds.has(Number(otherUserId));
+      });
+
+      if (!visibleConversations.length) return [];
+
+      const conversationIds = visibleConversations.map((c) => c.id);
+
+      const otherUserIds = visibleConversations.map((conv) =>
         Number(conv.user_one_id) === Number(user_id)
-        ? conv.user_two_id
-        : conv.user_one_id
-    );
+          ? conv.user_two_id
+          : conv.user_one_id
+      );
 
-    const { data: users, error: usersError } = await supabase
+      const { data: users, error: usersError } = await supabase
         .from("usuarios")
         .select("id_usuario, nombre")
         .in("id_usuario", otherUserIds);
 
-    if (usersError) throw new Error(usersError.message);
+      if (usersError) throw new Error(usersError.message);
 
-    const { data: messages, error: messagesError } = await supabase
+      const { data: messages, error: messagesError } = await supabase
         .from("chat_messages")
         .select("id, conversation_id, sender_id, message, created_at, read_at")
         .in("conversation_id", conversationIds)
         .order("created_at", { ascending: false });
 
-    if (messagesError) throw new Error(messagesError.message);
+      if (messagesError) throw new Error(messagesError.message);
 
-    const usersById = new Map((users || []).map((u) => [Number(u.id_usuario), u]));
+      const usersById = new Map((users || []).map((u) => [Number(u.id_usuario), u]));
 
-    const lastMessageByConversation = new Map();
-    const unreadCountByConversation = new Map();
+      const lastMessageByConversation = new Map();
+      const unreadCountByConversation = new Map();
 
-    for (const msg of messages || []) {
+      for (const msg of messages || []) {
         if (!lastMessageByConversation.has(msg.conversation_id)) {
-        lastMessageByConversation.set(msg.conversation_id, msg);
+          lastMessageByConversation.set(msg.conversation_id, msg);
         }
 
         const isUnreadForUser =
-        Number(msg.sender_id) !== Number(user_id) && !msg.read_at;
+          Number(msg.sender_id) !== Number(user_id) && !msg.read_at;
 
         if (isUnreadForUser) {
-        unreadCountByConversation.set(
+          unreadCountByConversation.set(
             msg.conversation_id,
             (unreadCountByConversation.get(msg.conversation_id) || 0) + 1
-        );
+          );
         }
-    }
+      }
 
-    return data.map((conv) => {
+      return visibleConversations.map((conv) => {
         const otherUserId =
-        Number(conv.user_one_id) === Number(user_id)
+          Number(conv.user_one_id) === Number(user_id)
             ? Number(conv.user_two_id)
             : Number(conv.user_one_id);
 
@@ -157,17 +179,18 @@ class ChatService {
         const lastMessage = lastMessageByConversation.get(conv.id);
 
         return {
-        ...conv,
-        other_user_id: otherUserId,
-        other_user_nombre: otherUser?.nombre ?? "Usuario",
-        other_user_foto: null,
+          ...conv,
+          other_user_id: otherUserId,
+          other_user_nombre: otherUser?.nombre ?? "Usuario",
+          other_user_foto: null,
+          is_blocked: false,
 
-        last_message: lastMessage?.message ?? null,
-        last_message_at: lastMessage?.created_at ?? conv.updated_at,
-        last_message_sender_id: lastMessage?.sender_id ?? null,
-        unread_count: unreadCountByConversation.get(conv.id) || 0,
+          last_message: lastMessage?.message ?? null,
+          last_message_at: lastMessage?.created_at ?? conv.updated_at,
+          last_message_sender_id: lastMessage?.sender_id ?? null,
+          unread_count: unreadCountByConversation.get(conv.id) || 0,
         };
-    });
+      });
     }
 
   async getMessages({ conversation_id, user_id }) {
@@ -191,10 +214,17 @@ class ChatService {
       throw new Error("El mensaje no puede estar vacío");
     }
 
-    await this._getConversationForUser({
+    const conversation = await this._getConversationForUser({
       conversation_id,
       user_id: sender_id,
     });
+
+    const receiverId =
+      Number(conversation.user_one_id) === Number(sender_id)
+        ? Number(conversation.user_two_id)
+        : Number(conversation.user_one_id);
+
+    await safetyService.assertCanInteract(sender_id, receiverId);
 
     const { data, error } = await supabase
       .from("chat_messages")

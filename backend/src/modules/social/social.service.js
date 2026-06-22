@@ -1,4 +1,5 @@
 import supabase from '../../config/supabaseClient.js'
+import safetyService from './safety.service.js'
 
 
 class SocialService {
@@ -8,7 +9,7 @@ class SocialService {
    * @param {{ venue_id?: number | null }} params
    * @returns {Promise<Array<{user_id:number,nombre:string|null,foto:string|null,isOnline:boolean}>>}
    */
- async getActiveUsers({ venue_id = null } = {}) {
+ async getActiveUsers({ venue_id = null, user_id = null } = {}) {
   let presenceQuery = supabase
     .from("user_presence")
     .select("user_id, venue_id, last_heartbeat_at")
@@ -30,8 +31,32 @@ class SocialService {
     }
   }
 
-  const userIds = [...latestPresenceByUser.keys()];
-  if (!userIds.length) return [];
+  let userIds = [...latestPresenceByUser.keys()];
+    if (!userIds.length) return [];
+
+    if (user_id) {
+      const blockedRelations = await safetyService.getBlockedRelationsForUser(user_id);
+
+      const hiddenUserIds = new Set(
+        blockedRelations
+          .filter((relation) =>
+            ["hidden", "emergency"].includes(relation.visibility_mode)
+          )
+          .map((relation) =>
+            Number(relation.blocker_id) === Number(user_id)
+              ? Number(relation.blocked_id)
+              : Number(relation.blocker_id)
+          )
+      );
+
+      userIds = userIds.filter(
+        (activeUserId) =>
+          Number(activeUserId) !== Number(user_id) &&
+          !hiddenUserIds.has(Number(activeUserId))
+      );
+    }
+
+    if (!userIds.length) return [];
 
   const { data: users, error: usersError } = await supabase
     .from("usuarios")

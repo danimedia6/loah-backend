@@ -20,6 +20,7 @@ import giftsRouter from "./modules/social/gifts.router.js";
 import venuesRoutes from "./modules/social/venues.routes.js";
 import chatRoutes from "./modules/social/chat.routes.js";
 import socialProfileRoutes from "./modules/social/social-profile.routes.js";
+import safetyRoutes from "./modules/social/safety.routes.js";
 
 import http from 'http'
 import { Server } from 'socket.io'
@@ -90,6 +91,7 @@ app.use('/api/categorias', categoriasRoutes)
 app.use('/api/usuarios', usuariosRoutes)
 app.use('/api/auth', authRoutes)
 app.use('/api/social', socialRoutes)
+app.use("/api/social/safety", safetyRoutes);
 
 app.use('/api/wompi', wompiRoutes)
 
@@ -100,6 +102,7 @@ app.use("/api/social/gifts", giftsRouter);
 app.use("/api/social/venues", venuesRoutes);
 app.use("/api/social/chat", chatRoutes);
 app.use("/api/social/profile", socialProfileRoutes);
+
 
 
 
