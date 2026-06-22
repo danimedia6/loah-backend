@@ -15,6 +15,19 @@ import categoriasRoutes from './routes/categorias.routes.js'
 import adminRoutes from './routes/admin.routes.js'
 import debugRoutes from './routes/debug.routes.js'
 import wompiRoutes from './routes/wompi.routes.js'
+import socialRoutes from './modules/social/social.routes.js'
+import giftsRouter from "./modules/social/gifts.router.js";
+import venuesRoutes from "./modules/social/venues.routes.js";
+import chatRoutes from "./modules/social/chat.routes.js";
+import socialProfileRoutes from "./modules/social/social-profile.routes.js";
+import safetyRoutes from "./modules/social/safety.routes.js";
+
+import http from 'http'
+import { Server } from 'socket.io'
+import { setupSocialSocket } from './sockets/social.socket.js'
+import { setIO } from './sockets/socketStore.js'
+
+
 
 
 /**
@@ -56,6 +69,8 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization']
 }
 
+
+
 app.use(cors(corsOptions))
 
 // Necesario para Webhook de Wompi: recibir raw body
@@ -75,18 +90,43 @@ app.use('/api/productos', productosRoutes)
 app.use('/api/categorias', categoriasRoutes)
 app.use('/api/usuarios', usuariosRoutes)
 app.use('/api/auth', authRoutes)
+app.use('/api/social', socialRoutes)
+app.use("/api/social/safety", safetyRoutes);
+
 app.use('/api/wompi', wompiRoutes)
 
 app.use('/api/admin', adminRoutes)
 // Debug routes (local only) - no auth. Remove before deploying.
 app.use('/api/debug', debugRoutes)
+app.use("/api/social/gifts", giftsRouter);
+app.use("/api/social/venues", venuesRoutes);
+app.use("/api/social/chat", chatRoutes);
+app.use("/api/social/profile", socialProfileRoutes);
 
 
-// Export app for testing; only listen when not in test environment
+
+
+
+
+ 
+
+
+const httpServer = http.createServer(app)
+
+const io = new Server(httpServer, {
+  cors: corsOptions,
+})
+
+setIO(io)
+
+setupSocialSocket(io)
+
 if (process.env.NODE_ENV !== 'test') {
-  app.listen(process.env.PORT || 4000, () => {
+  httpServer.listen(process.env.PORT || 4000, () => {
     console.log(`🚀 Servidor corriendo en puerto ${process.env.PORT || 4000}`)
+    console.log('🔌 WebSockets activos con Socket.io')
   })
 }
 
+export { app, httpServer, io }
 export default app

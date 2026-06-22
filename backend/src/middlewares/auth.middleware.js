@@ -15,7 +15,13 @@ export const authMiddleware = (req, res, next) => {
     const payload = jwt.verify(token, process.env.JWT_SECRET || 'secret')
     // small debug: attach and log basic user info to help debug role/permissions
     req.user = payload
-    try { console.debug('[auth] token payload:', { id: payload.id || payload.user_id || null, rol: payload.rol || payload.role || null }) } catch (e) {}
+    try {
+      console.debug('[auth] token payload:', {
+        id: payload.id || payload.user_id || null,
+        rol: payload.rol || payload.role || null,
+        venue_id: payload.venue_id || null,
+      })
+    } catch (e) {}
     next()
   } catch (err) {
     return res.status(401).json({ error: 'Token inválido o expirado' })

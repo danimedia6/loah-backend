@@ -103,7 +103,7 @@ class PedidoService {
     throw new Error("Error obteniendo pedidos");
   }
 
-  // 👇 AGREGAR ESTA LÍNEA - Enriquecer items con nombres de productos
+  // Enriquecer items con nombres de productos
   await this._enrichPedidosWithProductNames(data);
 
   return data.map(p => ({

@@ -57,8 +57,16 @@ export const login = async (req, res) => {
     try {
       const usuario = await authService.login(correo, contrasena)
       
-      const payload = { id: usuario.id_usuario, correo: usuario.correo, rol: usuario.rol }
-      const token = jwt.sign(payload, process.env.JWT_SECRET || 'secret', { expiresIn: '8h' })
+      const payload = {
+        id: usuario.id_usuario,
+        correo: usuario.correo,
+        rol: usuario.rol,
+        venue_id: usuario.venue_id ?? null,
+      }
+
+      const token = jwt.sign(payload, process.env.JWT_SECRET || 'secret', {
+        expiresIn: '8h',
+      })
 
       // on successful login reset failed attempts for this email
       if (failedLogins[correo]) delete failedLogins[correo]
