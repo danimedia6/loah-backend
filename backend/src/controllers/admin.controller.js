@@ -1,4 +1,5 @@
 import usuarioService from '../services/usuario.service.js'
+import moderationService from '../services/moderation.service.js'
 
 /**
  * Crea un nuevo usuario administrador.
@@ -60,3 +61,64 @@ export const changeUserRole = async (req, res) => {
     return res.status(500).json({ error: 'Error interno' })
   }
 }
+
+export const listReports = async (req, res) => {
+  try {
+    const { status } = req.query;
+
+    const reports = await moderationService.listReports({ status });
+
+    return res.json({
+      success: true,
+      data: reports,
+    });
+  } catch (err) {
+    console.error("listReports error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Error interno",
+    });
+  }
+};
+
+export const updateReportStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    const reviewed_by = req.user?.id_usuario || req.user?.id;
+
+    const report = await moderationService.updateReportStatus({
+      report_id: id,
+      status,
+      reviewed_by,
+    });
+
+    return res.json({
+      success: true,
+      data: report,
+    });
+  } catch (err) {
+    console.error("updateReportStatus error:", err);
+    return res.status(400).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};
+
+export const getPendingReportsCount = async (req, res) => {
+  try {
+    const count = await moderationService.getPendingCount();
+
+    return res.json({
+      success: true,
+      count,
+    });
+  } catch (err) {
+    return res.status(500).json({
+      success: false,
+      message: err.message,
+    });
+  }
+};

@@ -32,21 +32,24 @@ class StoriesService {
     // 2) trae nombres (y foto_url si luego existe)
     const { data: users, error: usersError } = await supabase
       .from("usuarios")
-      .select("id_usuario, nombre")
-      .in("id_usuario", userIds);
+      .select("id_usuario, nombre, foto_url, is_suspended")
+      .in("id_usuario", userIds)
+      .eq("is_suspended", false);
 
     if (usersError) throw new Error(usersError.message);
 
     const usersById = new Map((users || []).map(u => [u.id_usuario, u]));
 
-    return userIds.map(userId => ({
-      user_id: userId,
-      nombre: usersById.get(userId)?.nombre ?? null,
-      foto: null,
-      hasStory: true,
-      storyCount: map.get(userId)?.storyCount ?? 0,
-      latestAt: map.get(userId)?.latestAt ?? null
-    }));
+    return userIds
+      .filter((userId) => usersById.has(userId))
+      .map(userId => ({
+        user_id: userId,
+        nombre: usersById.get(userId)?.nombre ?? null,
+        foto: usersById.get(userId)?.foto_url ?? null,
+        hasStory: true,
+        storyCount: map.get(userId)?.storyCount ?? 0,
+        latestAt: map.get(userId)?.latestAt ?? null
+      }));
   }
 
   async getThemesSummary({ venue_id }) {
@@ -60,8 +63,23 @@ class StoriesService {
 
     if (error) throw new Error(error.message);
 
+    const userIds = [...new Set((stories || []).map((s) => s.user_id))];
+
+    if (!userIds.length) return [];
+
+    const { data: users, error: usersError } = await supabase
+      .from("usuarios")
+      .select("id_usuario, is_suspended")
+      .in("id_usuario", userIds)
+      .eq("is_suspended", false);
+
+    if (usersError) throw new Error(usersError.message);
+
+    const allowedUserIds = new Set((users || []).map((u) => Number(u.id_usuario)));
+
     const summary = new Map(); // category -> {activeUsers:Set, activeStories:number}
     for (const s of stories || []) {
+      if (!allowedUserIds.has(Number(s.user_id))) continue;
       const key = s.venue_category;
       if (!summary.has(key)) summary.set(key, { activeUsers: new Set(), activeStories: 0 });
       const item = summary.get(key);
@@ -86,6 +104,15 @@ class StoriesService {
 
   async getStoriesByUser({ venue_id, user_id }) {
     const now = new Date().toISOString();
+
+    const { data: user, error: userError } = await supabase
+      .from("usuarios")
+      .select("id_usuario, is_suspended")
+      .eq("id_usuario", user_id)
+      .maybeSingle();
+
+    if (userError) throw new Error(userError.message);
+    if (!user || user.is_suspended) return [];
 
     const { data, error } = await supabase
       .from("stories")

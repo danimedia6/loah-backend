@@ -60,8 +60,9 @@ class SocialService {
 
   const { data: users, error: usersError } = await supabase
     .from("usuarios")
-    .select("id_usuario, nombre")
-    .in("id_usuario", userIds);
+    .select("id_usuario, nombre, is_suspended")
+    .in("id_usuario", userIds)
+    .eq("is_suspended", false);
 
   if (usersError) throw new Error(usersError.message);
 
@@ -86,11 +87,25 @@ class SocialService {
     (users || []).map((user) => [Number(user.id_usuario), user])
   );
 
+  const allowedUserIds = new Set(
+    (users || []).map((u) => Number(u.id_usuario))
+  );
+
+  userIds = userIds.filter((userId) =>
+    allowedUserIds.has(Number(userId))
+  );
+
+  if (!userIds.length) return [];
+
   const profilesByUserId = new Map(
     (profiles || []).map((profile) => [Number(profile.user_id), profile])
   );
 
   const nowMs = Date.now();
+
+  userIds = userIds.filter((userId) => usersById.has(Number(userId)));
+
+  if (!userIds.length) return [];
 
   return userIds.map((userId) => {
     const presence = latestPresenceByUser.get(userId);
@@ -105,7 +120,7 @@ class SocialService {
       user_id: Number(userId),
       nombre: profile?.display_name || user?.nombre || "Usuario",
       real_nombre: user?.nombre ?? null,
-      foto: user?.foto_url ?? null,
+      foto: null,
       isOnline: nowMs - lastHeartbeat < 300000,
 
       display_name: profile?.display_name ?? null,
