@@ -1,6 +1,7 @@
 import storiesService from "./stories.service.js";
 import multer from "multer";
 import { getIO } from '../../sockets/socketStore.js'
+import { NotificationsService } from "./notifications.service.js";
 
 
 
@@ -187,12 +188,17 @@ export async function toggleReaction(req, res) {
     const story_id = Number(req.params.id);
     const { user_id, reaction } = req.body;
 
-    if (!story_id || !user_id || !reaction)
-      return res.status(400).json({ error: "story_id, user_id y reaction son requeridos" });
+    if (!story_id || !user_id || !reaction) {
+      return res.status(400).json({
+        error: "story_id, user_id y reaction son requeridos",
+      });
+    }
+
+    const actorId = Number(user_id);
 
     const result = await storiesService.toggleReaction({
       story_id,
-      user_id: Number(user_id),
+      user_id: actorId,
       reaction,
     });
 
@@ -201,11 +207,33 @@ export async function toggleReaction(req, res) {
     const io = getIO();
 
     if (story) {
-      io?.to(`venue:${story.venue_id}`).emit("story:reaction-updated", {
+      const isOwner = String(story.user_id) === String(actorId);
+
+      let notification = null;
+
+      if (!isOwner && result.reaction) {
+        notification = await NotificationsService.createNotification({
+          user_id: story.user_id,
+          actor_id: actorId,
+          venue_id: story.venue_id,
+          type: "story_reaction",
+          title: "Nueva reacción",
+          message: "Alguien reaccionó a tu historia.",
+          metadata: {
+            story_id,
+            reaction: result.reaction,
+          },
+        });
+
+        io?.to(`user:${story.user_id}`).emit("notification:new", notification);
+      }
+
+      io?.to(`user:${story.user_id}`).emit("story:reaction-updated", {
         story_id,
-        user_id: Number(user_id),
+        user_id: actorId,
         reaction: result.reaction,
         story,
+        notification,
       });
     }
 

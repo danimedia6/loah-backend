@@ -1,6 +1,7 @@
 import usuarioService from '../services/usuario.service.js'
 import moderationService from '../services/moderation.service.js'
 
+
 /**
  * Crea un nuevo usuario administrador.
  * Requiere autenticación de administrador.

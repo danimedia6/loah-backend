@@ -26,6 +26,9 @@ import http from 'http'
 import { Server } from 'socket.io'
 import { setupSocialSocket } from './sockets/social.socket.js'
 import { setIO } from './sockets/socketStore.js'
+import notificationsRoutes from "./modules/social/notifications.routes.js";
+import profileBackgroundRoutes from "./modules/social/profile-background.routes.js";
+
 
 
 
@@ -102,6 +105,8 @@ app.use("/api/social/gifts", giftsRouter);
 app.use("/api/social/venues", venuesRoutes);
 app.use("/api/social/chat", chatRoutes);
 app.use("/api/social/profile", socialProfileRoutes);
+app.use("/api/social/notifications", notificationsRoutes);
+app.use("/api/social/profile", profileBackgroundRoutes);
 
 
 

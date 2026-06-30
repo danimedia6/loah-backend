@@ -17,6 +17,8 @@ class SocialProfileService {
     const allowedPayload = {
       user_id: userId,
       display_name: payload.display_name ?? null,
+      foto_url: payload.foto_url ?? null,
+      card_background_url: payload.card_background_url ?? null,
       bio: payload.bio ?? null,
       mood: payload.mood ?? "Disponible 🍻",
       favorite_drink: payload.favorite_drink ?? null,
@@ -27,6 +29,9 @@ class SocialProfileService {
       visibility: payload.visibility ?? "public",
       theme: payload.theme ?? "default",
       updated_at: new Date().toISOString(),
+      gallery_urls: Array.isArray(payload.gallery_urls)
+      ? payload.gallery_urls.slice(0, 6)
+      : [],
     };
 
     const { data, error } = await supabase

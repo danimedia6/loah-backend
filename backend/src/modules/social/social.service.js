@@ -71,13 +71,16 @@ class SocialService {
     .select(`
       user_id,
       display_name,
+      foto_url,
       bio,
       mood,
       favorite_drink,
       instagram,
       tags,
+      card_background_url,
       allow_gifts,
-      allow_chat
+      allow_chat,
+      gallery_urls
     `)
     .in("user_id", userIds);
 
@@ -120,9 +123,9 @@ class SocialService {
       user_id: Number(userId),
       nombre: profile?.display_name || user?.nombre || "Usuario",
       real_nombre: user?.nombre ?? null,
-      foto: null,
+      foto: profile?.foto_url ?? null,
       isOnline: nowMs - lastHeartbeat < 300000,
-
+      card_background_url: profile?.card_background_url ?? null,
       display_name: profile?.display_name ?? null,
       bio: profile?.bio ?? null,
       mood: profile?.mood ?? "Disponible 🍻",
@@ -131,12 +134,13 @@ class SocialService {
       tags: profile?.tags ?? [],
       allow_gifts: profile?.allow_gifts ?? true,
       allow_chat: profile?.allow_chat ?? true,
+      gallery_urls: profile?.gallery_urls ?? [],
     };
   });
 }
   async heartbeat({ user_id, venue_id, table_id }) {
     const { error } = await supabase
-      .from('user_presence')
+      .from("user_presence")
       .upsert(
         {
           user_id,
@@ -144,10 +148,10 @@ class SocialService {
           table_id,
           last_heartbeat_at: new Date().toISOString(),
         },
-        { onConflict: 'user_id' }
-      )
+        { onConflict: "user_id,venue_id" }
+      );
 
-    if (error) throw new Error(error.message)
+    if (error) throw new Error(error.message);
   }
 }
 

@@ -1,8 +1,38 @@
 import supabase from "../../config/supabaseClient.js";
 import safetyService from "./safety.service.js";
 
+async function getSocialProfile(userId) {
+  const { data, error } = await supabase
+    .from("social_profiles")
+    .select("allow_chat")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  return {
+    allow_chat: data?.allow_chat ?? true,
+  };
+}
+
+async function assertCanChat(userAId, userBId) {
+  const [userAProfile, userBProfile] = await Promise.all([
+    getSocialProfile(userAId),
+    getSocialProfile(userBId),
+  ]);
+
+  if (!userAProfile.allow_chat || !userBProfile.allow_chat) {
+    throw new Error("No se puede enviar el mensaje porque uno de los usuarios tiene el chat desactivado.");
+  }
+
+  return true;
+}
+
 class ChatService {
   async createConversationFromGift({ gift, firstMessage }) {
+    await safetyService.assertCanInteract(gift.sender_id, gift.receiver_id);
+    await assertCanChat(gift.sender_id, gift.receiver_id);
+
     const { data: story, error: storyError } = await supabase
         .from("stories")
         .select("venue_id")
@@ -16,11 +46,10 @@ class ChatService {
     const userA = Math.min(Number(gift.sender_id), Number(gift.receiver_id));
     const userB = Math.max(Number(gift.sender_id), Number(gift.receiver_id));
 
-    // 1. Buscar conversación existente entre las dos personas en el mismo venue
+    // 1. Buscar conversación existente entre las dos personas, sin importar el venue
     const { data: existingConversations, error: existingError } = await supabase
     .from("conversations")
     .select("*")
-    .eq("venue_id", venue_id)
     .eq("user_one_id", userA)
     .eq("user_two_id", userB)
     .order("updated_at", { ascending: false })
@@ -46,6 +75,21 @@ class ChatService {
         if (conversationError) throw new Error(conversationError.message);
 
         conversation = createdConversation;
+    }
+
+    if (conversation) {
+      const { error: updateConversationError } = await supabase
+        .from("conversations")
+        .update({
+          gift_id: gift.id,
+          venue_id: conversation.venue_id ?? venue_id,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", conversation.id);
+
+      if (updateConversationError) {
+        throw new Error(updateConversationError.message);
+      }
     }
 
     // 3. Insertar evento automático del gift
@@ -74,14 +118,6 @@ class ChatService {
 
         if (messageError) throw new Error(messageError.message);
     }
-
-    // 5. Actualizar conversación
-    await supabase
-        .from("conversations")
-        .update({
-        updated_at: new Date().toISOString(),
-        })
-        .eq("id", conversation.id);
 
     return conversation;
     }
@@ -140,6 +176,13 @@ class ChatService {
 
       if (usersError) throw new Error(usersError.message);
 
+      const { data: profiles, error: profilesError } = await supabase
+        .from("social_profiles")
+        .select("user_id, display_name, foto_url")
+        .in("user_id", otherUserIds);
+
+      if (profilesError) throw new Error(profilesError.message);
+
       const { data: messages, error: messagesError } = await supabase
         .from("chat_messages")
         .select("id, conversation_id, sender_id, message, created_at, read_at")
@@ -149,6 +192,10 @@ class ChatService {
       if (messagesError) throw new Error(messagesError.message);
 
       const usersById = new Map((users || []).map((u) => [Number(u.id_usuario), u]));
+
+      const profilesByUserId = new Map(
+        (profiles || []).map((profile) => [Number(profile.user_id), profile])
+      );
 
       const lastMessageByConversation = new Map();
       const unreadCountByConversation = new Map();
@@ -176,13 +223,15 @@ class ChatService {
             : Number(conv.user_one_id);
 
         const otherUser = usersById.get(otherUserId);
+        const otherProfile = profilesByUserId.get(Number(otherUserId));
         const lastMessage = lastMessageByConversation.get(conv.id);
 
         return {
           ...conv,
           other_user_id: otherUserId,
-          other_user_nombre: otherUser?.nombre ?? "Usuario",
-          other_user_foto: null,
+          other_user_nombre:
+            otherProfile?.display_name || otherUser?.nombre || "Usuario",
+          other_user_foto: otherProfile?.foto_url ?? null,
           is_blocked: false,
 
           last_message: lastMessage?.message ?? null,
@@ -225,6 +274,7 @@ class ChatService {
         : Number(conversation.user_one_id);
 
     await safetyService.assertCanInteract(sender_id, receiverId);
+    await assertCanChat(sender_id, receiverId);
 
     const { data, error } = await supabase
       .from("chat_messages")

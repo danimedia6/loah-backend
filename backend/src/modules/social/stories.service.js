@@ -32,7 +32,7 @@ class StoriesService {
     // 2) trae nombres (y foto_url si luego existe)
     const { data: users, error: usersError } = await supabase
       .from("usuarios")
-      .select("id_usuario, nombre, foto_url, is_suspended")
+      .select("id_usuario, nombre, is_suspended")
       .in("id_usuario", userIds)
       .eq("is_suspended", false);
 
@@ -45,7 +45,7 @@ class StoriesService {
       .map(userId => ({
         user_id: userId,
         nombre: usersById.get(userId)?.nombre ?? null,
-        foto: usersById.get(userId)?.foto_url ?? null,
+        foto:  null,
         hasStory: true,
         storyCount: map.get(userId)?.storyCount ?? 0,
         latestAt: map.get(userId)?.latestAt ?? null
@@ -315,7 +315,7 @@ class StoriesService {
     const userIds = data.map(r => r.user_id);
     const { data: users } = await supabase
       .from("usuarios")
-      .select("id_usuario, nombre, foto_url")
+      .select("id_usuario, nombre")
       .in("id_usuario", userIds);
 
     const usersById = new Map((users || []).map(u => [u.id_usuario, u]));
@@ -323,7 +323,7 @@ class StoriesService {
     return data.map(r => ({
       user_id:   r.user_id,
       nombre:    usersById.get(r.user_id)?.nombre ?? null,
-      foto:      usersById.get(r.user_id)?.foto_url ?? null,
+      foto:      null,
       reaction:  r.reaction,
       created_at: r.created_at,
     }));

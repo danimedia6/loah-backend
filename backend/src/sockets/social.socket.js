@@ -1,6 +1,7 @@
 import jwt from 'jsonwebtoken'
 import socialService from '../modules/social/social.service.js'
 import chatService from '../modules/social/chat.service.js'
+import { setSocketInstance } from './socketInstance.js'
 
 function getTokenFromSocket(socket) {
   const authToken = socket.handshake.auth?.token
@@ -16,6 +17,7 @@ function getTokenFromSocket(socket) {
 }
 
 export function setupSocialSocket(io) {
+  setSocketInstance(io)
   io.use((socket, next) => {
     try {
       const token = getTokenFromSocket(socket)

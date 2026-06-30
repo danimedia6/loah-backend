@@ -2,6 +2,23 @@ import crypto from "crypto";
 import supabase from "../../config/supabaseClient.js";
 import chatService from "./chat.service.js";
 import safetyService from "./safety.service.js";
+import { NotificationsService } from "./notifications.service.js";
+import { getSocketInstance } from "../../sockets/socketInstance.js";
+
+async function getSocialProfile(userId) {
+  const { data, error } = await supabase
+    .from("social_profiles")
+    .select("allow_gifts, allow_chat")
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+
+  return {
+    allow_gifts: data?.allow_gifts ?? true,
+    allow_chat: data?.allow_chat ?? true,
+  };
+}
 
 class GiftsService {
 
@@ -76,7 +93,16 @@ class GiftsService {
   async sendGift({ story_id, sender_id, receiver_id, product_id }) {
     await safetyService.assertCanInteract(sender_id, receiver_id);
 
-    await this._validateActivePresence({ sender_id, receiver_id });
+    const receiverProfile = await getSocialProfile(receiver_id);
+
+    if (!receiverProfile.allow_gifts) {
+      throw new Error("Este usuario no está recibiendo obsequios.");
+    }
+
+    const presenceContext = await this._validateActivePresence({
+      sender_id,
+      receiver_id,
+    });
 
     const { data: product, error: productError } = await supabase
       .from("productos")
@@ -112,6 +138,31 @@ class GiftsService {
       .single();
 
     if (error) throw new Error(error.message);
+
+    const notification = await NotificationsService.createNotification({
+      user_id: receiver_id,
+      actor_id: sender_id,
+      venue_id: presenceContext.venue_id,
+      type: "gift_received",
+      title: "Nuevo obsequio",
+      message: `Te enviaron un ${product.nombre}.`,
+      metadata: {
+        gift_id: data.id,
+        product_id,
+        product_nombre: product.nombre,
+        sender_id,
+        receiver_id,
+        story_id,
+      },
+    });
+
+    const io = getSocketInstance();
+
+    if (io) {
+      io.to(`user:${receiver_id}`).emit("notification:new", notification);
+      io.to(`user:${receiver_id}`).emit("gift:created", data);
+    }
+
     return data;
   }
 
@@ -156,6 +207,15 @@ class GiftsService {
       // 🔹 Si es chat → crear conversación
       if (response === "accepted_chat") {
         await safetyService.assertCanInteract(gift.sender_id, gift.receiver_id);
+
+        const [senderProfile, receiverProfile] = await Promise.all([
+          getSocialProfile(gift.sender_id),
+          getSocialProfile(gift.receiver_id),
+        ]);
+
+        if (!senderProfile.allow_chat || !receiverProfile.allow_chat) {
+          throw new Error("Uno de los usuarios tiene el chat desactivado.");
+        }
 
         conversation = await chatService.createConversationFromGift({
           gift,
