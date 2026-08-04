@@ -3,6 +3,8 @@ import socialService from '../modules/social/social.service.js'
 import chatService from '../modules/social/chat.service.js'
 import { setSocketInstance } from './socketInstance.js'
 
+const activeSocketsByUserId = new Map()
+
 function getTokenFromSocket(socket) {
   const authToken = socket.handshake.auth?.token
   const bearerToken = socket.handshake.headers?.authorization
@@ -14,6 +16,44 @@ function getTokenFromSocket(socket) {
   }
 
   return null
+}
+
+function addActiveSocket(userId, socketId) {
+  const normalizedUserId = String(userId)
+  const sockets = activeSocketsByUserId.get(normalizedUserId) || new Set()
+
+  sockets.add(socketId)
+  activeSocketsByUserId.set(normalizedUserId, sockets)
+}
+
+function removeActiveSocket(userId, socketId) {
+  const normalizedUserId = String(userId)
+  const sockets = activeSocketsByUserId.get(normalizedUserId)
+
+  if (!sockets) return 0
+
+  sockets.delete(socketId)
+
+  if (!sockets.size) {
+    activeSocketsByUserId.delete(normalizedUserId)
+    return 0
+  }
+
+  return sockets.size
+}
+
+async function emitPresenceUpdateForVenue(io, venueId) {
+  const normalizedVenueId = Number(venueId)
+  const socketsInVenue = await io.in(`venue:${normalizedVenueId}`).fetchSockets()
+
+  for (const venueSocket of socketsInVenue) {
+    const activeUsers = await socialService.getActiveUsers({
+      venue_id: normalizedVenueId,
+      user_id: venueSocket.data.user_id,
+    })
+
+    venueSocket.emit('presence:update', activeUsers)
+  }
 }
 
 export function setupSocialSocket(io) {
@@ -44,6 +84,8 @@ export function setupSocialSocket(io) {
   })
 
   io.on('connection', (socket) => {
+    addActiveSocket(socket.data.user_id, socket.id)
+
     console.log('🔌 Socket autenticado:', {
       socketId: socket.id,
       userId: socket.data.user_id,
@@ -76,16 +118,7 @@ export function setupSocialSocket(io) {
       table_id: finalTableId,
     })
 
-    const socketsInVenue = await io.in(`venue:${finalVenueId}`).fetchSockets()
-
-      for (const venueSocket of socketsInVenue) {
-        const activeUsers = await socialService.getActiveUsers({
-          venue_id: Number(finalVenueId),
-          user_id: venueSocket.data.user_id,
-        })
-
-        venueSocket.emit('presence:update', activeUsers)
-      }
+    await emitPresenceUpdateForVenue(io, finalVenueId)
     } catch (error) {
         console.error('❌ Error en social:join-venue:', error.message)
         socket.emit('presence:error', { error: error.message })
@@ -108,16 +141,7 @@ export function setupSocialSocket(io) {
         table_id: finalTableId,
         })
 
-        const socketsInVenue = await io.in(`venue:${finalVenueId}`).fetchSockets()
-
-          for (const venueSocket of socketsInVenue) {
-            const activeUsers = await socialService.getActiveUsers({
-              venue_id: Number(finalVenueId),
-              user_id: venueSocket.data.user_id,
-            })
-
-            venueSocket.emit('presence:update', activeUsers)
-          }
+        await emitPresenceUpdateForVenue(io, finalVenueId)
     } catch (error) {
         console.error('❌ Error en presence:heartbeat:', error.message)
         socket.emit('presence:error', { error: error.message })
@@ -190,8 +214,24 @@ export function setupSocialSocket(io) {
     }
     })
 
-    socket.on('disconnect', (reason) => {
+    socket.on('disconnect', async (reason) => {
       console.log('🔌 Socket desconectado:', socket.id, reason)
+
+      try {
+        const remainingSockets = removeActiveSocket(socket.data.user_id, socket.id)
+        const venueId = socket.data.venue_id
+
+        if (!venueId || remainingSockets > 0) return
+
+        await socialService.markOffline({
+          user_id: socket.data.user_id,
+          venue_id: Number(venueId),
+        })
+
+        await emitPresenceUpdateForVenue(io, venueId)
+      } catch (error) {
+        console.error('❌ Error al actualizar presencia en disconnect:', error.message)
+      }
     })
   })
 }

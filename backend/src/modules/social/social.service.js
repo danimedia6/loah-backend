@@ -153,6 +153,18 @@ class SocialService {
 
     if (error) throw new Error(error.message);
   }
+
+  async markOffline({ user_id, venue_id }) {
+    const offlineAt = new Date(Date.now() - 301000).toISOString();
+
+    const { error } = await supabase
+      .from("user_presence")
+      .update({ last_heartbeat_at: offlineAt })
+      .eq("user_id", user_id)
+      .eq("venue_id", venue_id);
+
+    if (error) throw new Error(error.message);
+  }
 }
 
 export default new SocialService()
