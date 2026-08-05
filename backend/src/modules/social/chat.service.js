@@ -258,7 +258,7 @@ class ChatService {
     return data || [];
   }
 
-  async sendMessage({ conversation_id, sender_id, message }) {
+  async sendMessage({ conversation_id, sender_id, message, includeParticipants = false }) {
     if (!message?.trim()) {
       throw new Error("El mensaje no puede estar vacío");
     }
@@ -272,6 +272,10 @@ class ChatService {
       Number(conversation.user_one_id) === Number(sender_id)
         ? Number(conversation.user_two_id)
         : Number(conversation.user_one_id);
+    const participantIds = [
+      conversation.user_one_id,
+      conversation.user_two_id,
+    ].filter(Boolean);
 
     await safetyService.assertCanInteract(sender_id, receiverId);
     await assertCanChat(sender_id, receiverId);
@@ -292,6 +296,13 @@ class ChatService {
       .from("conversations")
       .update({ updated_at: new Date().toISOString() })
       .eq("id", conversation_id);
+
+    if (includeParticipants) {
+      return {
+        message: data,
+        participantIds,
+      };
+    }
 
     return data;
   }

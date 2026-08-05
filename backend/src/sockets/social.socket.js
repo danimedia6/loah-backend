@@ -174,42 +174,68 @@ export function setupSocialSocket(io) {
     }
     })
 
-    socket.on('chat:send-message', async ({ conversationId, conversation_id, message } = {}, ack) => {
+    socket.on('chat:send-message', async ({ conversationId, conversation_id, message: inputMessage } = {}, ack) => {
     try {
         const finalConversationId = conversationId || conversation_id
 
-        if (!finalConversationId || !message?.trim()) {
+        if (!finalConversationId || !inputMessage?.trim()) {
         const errorPayload = { error: 'conversation_id y message son requeridos' }
         if (ack) ack({ ok: false, ...errorPayload })
         return
         }
 
-        const created = await chatService.sendMessage({
+        const { message, participantIds } = await chatService.sendMessage({
         conversation_id: finalConversationId,
         sender_id: socket.data.user_id,
-        message,
+        message: inputMessage,
+        includeParticipants: true,
         })
 
-        io.to(`conversation:${finalConversationId}`).emit('chat:message-created', created)
+        const targetRooms = [
+        `conversation:${finalConversationId}`,
+        ...participantIds.map((participantId) => `user:${participantId}`),
+        ]
+        const targetSocketIds = new Set()
 
-        const conversation = await chatService._getConversationForUser({
-        conversation_id: finalConversationId,
-        user_id: socket.data.user_id,
-        })
-
-        const participants = [conversation.user_one_id, conversation.user_two_id]
-
-        for (const participantId of participants) {
-        const conversations = await chatService.getConversationsByUser({
-            user_id: participantId,
-        })
-
-        io.to(`user:${participantId}`).emit('chat:conversations-updated', conversations)
+        for (const room of targetRooms) {
+        const socketIds = io.sockets.adapter.rooms.get(room) || []
+        for (const socketId of socketIds) {
+            targetSocketIds.add(socketId)
+        }
         }
 
-        if (ack) ack({ ok: true, message: created })
+        for (const socketId of targetSocketIds) {
+        io.to(socketId).emit('chat:message-created', message)
+        }
+
+        if (ack) ack({ ok: true, message })
+
+        const updateConversations = async () => {
+        await Promise.all(
+            participantIds.map(async (participantId) => {
+            const conversations = await chatService.getConversationsByUser({
+                user_id: participantId,
+            })
+
+            io.to(`user:${participantId}`).emit('chat:conversations-updated', conversations)
+            })
+        )
+        }
+
+        void Promise.allSettled([
+        updateConversations(),
+        ]).then((results) => {
+        if (results.some((result) => result.status === 'rejected')) {
+            console.error('[chat] secondary chat updates failed', {
+            messageId: message?.id,
+            errors: results
+                .filter((result) => result.status === 'rejected')
+                .map((result) => result.reason?.message || String(result.reason)),
+            })
+        }
+        })
     } catch (error) {
-        console.error('❌ Error en chat:send-message:', error.message)
+        console.error("❌ Error en chat:send-message:", error.message)
         if (ack) ack({ ok: false, error: error.message })
     }
     })

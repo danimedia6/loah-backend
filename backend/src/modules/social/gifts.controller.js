@@ -14,10 +14,6 @@ export async function sendGift(req, res) {
       product_id:  Number(product_id),
     });
     
-    const io = getIO();
-
-    io?.to(`user:${receiver_id}`).emit('gift:created', result);
-
     return res.status(201).json(result);
   } catch (error) {
     console.error("Error sendGift:", error);
@@ -43,9 +39,7 @@ export async function respondGift(req, res) {
 
     const io = getIO();
 
-    const { default: giftsServiceInstance } = await import('./gifts.service.js');
-
-    const pendingGifts = await giftsServiceInstance.getPendingGifts({
+    const pendingGifts = await giftsService.getPendingGifts({
       receiver_id: Number(receiver_id),
     });
 
