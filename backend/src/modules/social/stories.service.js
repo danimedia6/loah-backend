@@ -2,7 +2,7 @@ import supabase from "../../config/supabaseClient.js";
 import { v4 as uuidv4 } from "uuid";
 
 class StoriesService {
-  async getPeopleWithStories({ venue_id }) {
+  async getPeopleWithStories({ venue_id, viewer_user_id = null }) {
     const now = new Date().toISOString();
 
     // 1) trae historias activas del venue
@@ -17,17 +17,45 @@ class StoriesService {
 
     // Agrupar por user_id (conteo + latestAt)
     const map = new Map();
+    const storyIds = [];
     for (const s of stories || []) {
+      storyIds.push(s.id);
+
       if (!map.has(s.user_id)) {
-        map.set(s.user_id, { user_id: s.user_id, storyCount: 1, latestAt: s.created_at });
+        map.set(s.user_id, {
+          user_id: s.user_id,
+          storyCount: 1,
+          unseenStoryCount: 1,
+          latestAt: s.created_at
+        });
       } else {
         const cur = map.get(s.user_id);
         cur.storyCount += 1;
+        cur.unseenStoryCount += 1;
       }
     }
 
     const userIds = [...map.keys()];
     if (!userIds.length) return [];
+
+    if (viewer_user_id) {
+      const { data: views, error: viewsError } = await supabase
+        .from("story_views")
+        .select("story_id")
+        .eq("viewer_user_id", viewer_user_id)
+        .in("story_id", storyIds);
+
+      if (viewsError) throw new Error(viewsError.message);
+
+      const viewedStoryIds = new Set((views || []).map((v) => String(v.story_id)));
+
+      for (const s of stories || []) {
+        if (!viewedStoryIds.has(String(s.id))) continue;
+
+        const cur = map.get(s.user_id);
+        if (cur) cur.unseenStoryCount = Math.max(0, cur.unseenStoryCount - 1);
+      }
+    }
 
     // 2) trae nombres (y foto_url si luego existe)
     const { data: users, error: usersError } = await supabase
@@ -48,6 +76,8 @@ class StoriesService {
         foto:  null,
         hasStory: true,
         storyCount: map.get(userId)?.storyCount ?? 0,
+        unseenStoryCount: map.get(userId)?.unseenStoryCount ?? 0,
+        hasUnseenStory: (map.get(userId)?.unseenStoryCount ?? 0) > 0,
         latestAt: map.get(userId)?.latestAt ?? null
       }));
   }

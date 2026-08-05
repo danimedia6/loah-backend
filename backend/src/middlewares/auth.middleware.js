@@ -28,6 +28,20 @@ export const authMiddleware = (req, res, next) => {
   }
 }
 
+export const optionalAuthMiddleware = (req, res, next) => {
+  try {
+    const auth = req.headers.authorization || ''
+    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
+
+    if (!token) return next()
+
+    req.user = jwt.verify(token, process.env.JWT_SECRET || 'secret')
+    return next()
+  } catch (err) {
+    return next()
+  }
+}
+
 /**
  * Middleware para requerir un rol específico.
  * @param {string} role - Rol requerido.
