@@ -34,19 +34,12 @@ class SocialService {
   let userIds = [...latestPresenceByUser.keys()];
     if (!userIds.length) return [];
 
-    if (user_id) {
-      const blockedRelations = await safetyService.getBlockedRelationsForUser(user_id);
+    const userIdsBeforeHiddenFilter = [...userIds];
+    let hiddenUserIds = new Set();
 
-      const hiddenUserIds = new Set(
-        blockedRelations
-          .filter((relation) =>
-            ["hidden", "emergency"].includes(relation.visibility_mode)
-          )
-          .map((relation) =>
-            Number(relation.blocker_id) === Number(user_id)
-              ? Number(relation.blocked_id)
-              : Number(relation.blocker_id)
-          )
+    if (user_id) {
+      hiddenUserIds = new Set(
+        await safetyService.getHiddenUserIdsForViewer(user_id)
       );
 
       userIds = userIds.filter(
@@ -55,6 +48,13 @@ class SocialService {
           !hiddenUserIds.has(Number(activeUserId))
       );
     }
+
+    console.log("[hidden debug:active-users]", {
+      user_id,
+      userIdsBeforeHiddenFilter,
+      hiddenUserIds: [...hiddenUserIds],
+      userIdsAfterHiddenFilter: userIds,
+    });
 
     if (!userIds.length) return [];
 

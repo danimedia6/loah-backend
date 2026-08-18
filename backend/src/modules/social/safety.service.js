@@ -19,16 +19,27 @@ class SafetyService {
     if (!blockedId) throw new Error("Usuario a bloquear inválido");
     if (blockerId === blockedId) throw new Error("No puedes bloquearte a ti mismo");
 
+    console.log("[safety block:service payload]", {
+      blocker_id,
+      blocked_id,
+      reason,
+      visibility_mode,
+    });
+
+    const blockPayload = {
+      blocker_id: blockerId,
+      blocked_id: blockedId,
+      reason,
+      visibility_mode,
+      updated_at: new Date().toISOString(),
+    };
+
+    console.log("[safety block:persist payload]", blockPayload);
+
     const { data, error } = await supabase
       .from("social_user_blocks")
       .upsert(
-        {
-          blocker_id: blockerId,
-          blocked_id: blockedId,
-          reason,
-          visibility_mode,
-          updated_at: new Date().toISOString(),
-        },
+        blockPayload,
         { onConflict: "blocker_id,blocked_id" }
       )
       .select()
@@ -83,6 +94,56 @@ class SafetyService {
     if (error) throw new Error(error.message);
 
     return data || [];
+  }
+
+  async getHiddenUserIdsForViewer(user_id) {
+    const userId = normalizeId(user_id);
+    if (!userId) {
+      console.log("[hidden debug:stored-blocks]", {
+        userId,
+        allBlocksForViewer: [],
+      });
+      console.log("[hidden debug:safety]", {
+        user_id,
+        rows: [],
+        hiddenIds: [],
+      });
+      return [];
+    }
+
+    const { data, error } = await supabase
+      .from("social_user_blocks")
+      .select(`
+        id,
+        blocker_id,
+        blocked_id,
+        reason,
+        visibility_mode,
+        created_at
+      `)
+      .eq("blocker_id", userId)
+      .order("created_at", { ascending: false });
+
+    if (error) throw new Error(error.message);
+
+    const allBlocksForViewer = data || [];
+    const hiddenRows = allBlocksForViewer.filter(
+      (row) => String(row.visibility_mode || "").trim().toLowerCase() === "hidden"
+    );
+    const hiddenIds = hiddenRows.map((row) => Number(row.blocked_id));
+
+    console.log("[hidden debug:stored-blocks]", {
+      userId,
+      allBlocksForViewer,
+    });
+
+    console.log("[hidden debug:safety]", {
+      user_id,
+      rows: hiddenRows,
+      hiddenIds,
+    });
+
+    return hiddenIds;
   }
 
   async getBlockRelationship(user_a_id, user_b_id) {

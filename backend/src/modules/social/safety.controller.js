@@ -27,12 +27,15 @@ class SafetyController {
   async blockUser(req, res) {
     try {
       const blocker_id = getAuthUserId(req);
-      const { blocked_id, reason } = req.body;
+      const { blocked_id, reason, visibility_mode } = req.body;
+
+      console.log("[safety block:req.body]", req.body);
 
       const data = await safetyService.blockUser({
         blocker_id,
         blocked_id,
         reason,
+        visibility_mode,
       });
 
       return res.status(201).json({

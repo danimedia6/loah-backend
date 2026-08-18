@@ -53,6 +53,20 @@ export async function respondGift(req, res) {
       result
     );
 
+    if (result.sender_id) {
+      io?.to(`user:${result.sender_id}`).emit(
+        'gift:responded',
+        result
+      );
+
+      if (result.notification) {
+        io?.to(`user:${result.sender_id}`).emit(
+          'notification:new',
+          result.notification
+        );
+      }
+    }
+
     return res.json(result);
   } catch (error) {
     console.error("Error respondGift:", error);

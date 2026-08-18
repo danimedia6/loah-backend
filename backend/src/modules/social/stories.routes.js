@@ -16,7 +16,7 @@ const router = Router();
 
 router.get("/people", optionalAuthMiddleware, getPeopleWithStories);
 router.get("/themes", getThemesSummary);
-router.get("/", getStories);
+router.get("/", optionalAuthMiddleware, getStories);
 router.post("/upload", upload.single("file"), uploadStory);  
 router.post("/:id/view", optionalAuthMiddleware, registerView);
 router.post("/:id/like", toggleLike);

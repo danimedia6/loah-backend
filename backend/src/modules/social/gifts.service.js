@@ -20,6 +20,30 @@ async function getSocialProfile(userId) {
   };
 }
 
+async function getGiftActorIdentity(userId) {
+  const [{ data: profile, error: profileError }, { data: user, error: userError }] =
+    await Promise.all([
+      supabase
+        .from("social_profiles")
+        .select("display_name, foto_url, avatar_url")
+        .eq("user_id", userId)
+        .maybeSingle(),
+      supabase
+        .from("usuarios")
+        .select("nombre")
+        .eq("id_usuario", userId)
+        .maybeSingle(),
+    ]);
+
+  if (profileError) throw new Error(profileError.message);
+  if (userError) throw new Error(userError.message);
+
+  return {
+    actor_name: profile?.display_name?.trim() || user?.nombre?.trim() || "Alguien",
+    actor_photo: profile?.foto_url || profile?.avatar_url || null,
+  };
+}
+
 class GiftsService {
 
 
@@ -139,6 +163,8 @@ class GiftsService {
 
     if (error) throw new Error(error.message);
 
+    const senderIdentity = await getGiftActorIdentity(sender_id);
+
     const notification = await NotificationsService.createNotification({
       user_id: receiver_id,
       actor_id: sender_id,
@@ -150,6 +176,9 @@ class GiftsService {
         gift_id: data.id,
         product_id,
         product_nombre: product.nombre,
+        product_name: product.nombre,
+        response: null,
+        ...senderIdentity,
         sender_id,
         receiver_id,
         story_id,
@@ -169,11 +198,13 @@ class GiftsService {
   // Destinatario responde al obsequio
   
   async respondGift({ gift_id, receiver_id, response, message }) {
+    const cleanMessage = typeof message === "string" ? message.trim() : "";
+
     console.log("[GIFT] respondGift input:", {
       gift_id,
       receiver_id,
       response,
-      message,
+      message: cleanMessage || null,
     });
 
     const validResponses = ["accepted_anon", "accepted_id", "accepted_chat", "declined"];
@@ -219,7 +250,7 @@ class GiftsService {
 
         conversation = await chatService.createConversationFromGift({
           gift,
-          firstMessage: message,
+          firstMessage: cleanMessage,
         });
 
         // guardar relación en gift
@@ -236,7 +267,7 @@ class GiftsService {
     const updatePayload = {
       status: response,
       responded_at: new Date().toISOString(),
-      ...(message ? { receiver_message: message } : {}),
+      ...(cleanMessage ? { receiver_message: cleanMessage } : {}),
       ...(redeemToken ? { redeem_token: redeemToken } : {}),
       ...(redeemExpiresAt ? { redeem_expires_at: redeemExpiresAt.toISOString() } : {}),
     };
@@ -252,13 +283,68 @@ class GiftsService {
     }
 
     
+    let notification = null;
+
+    if (response === "declined") {
+      notification = await NotificationsService.createNotification({
+        user_id: gift.sender_id,
+        actor_id: null,
+        type: "gift_responded",
+        title: "Lo sentimos",
+        message: "Tu obsequio no fue aceptado.",
+        metadata: {
+          gift_id: gift.id,
+          product_name: gift.product_nombre,
+          response: "declined",
+          sender_id: gift.sender_id,
+          receiver_id: gift.receiver_id,
+        },
+      });
+    } else {
+      const receiverIdentity = await getGiftActorIdentity(gift.receiver_id);
+      const isAcceptedChat = response === "accepted_chat";
+      const notificationTitle = isAcceptedChat
+        ? "Obsequio aceptado 💬"
+        : "Obsequio aceptado";
+      const notificationMessage = isAcceptedChat
+        ? `${receiverIdentity.actor_name} aceptó tu obsequio y te respondió. Toca para abrir el chat.`
+        : response === "accepted_id"
+        ? `${receiverIdentity.actor_name} aceptó tu obsequio.`
+        : cleanMessage
+        ? `${receiverIdentity.actor_name} aceptó tu obsequio: ${cleanMessage}`
+        : `${receiverIdentity.actor_name} aceptó tu obsequio.`;
+
+      notification = await NotificationsService.createNotification({
+        user_id: gift.sender_id,
+        actor_id: gift.receiver_id,
+        type: "gift_responded",
+        title: notificationTitle,
+        message: notificationMessage,
+        metadata: {
+          gift_id: gift.id,
+          product_name: gift.product_nombre,
+          response,
+          ...receiverIdentity,
+          sender_id: gift.sender_id,
+          receiver_id: gift.receiver_id,
+          message: cleanMessage || null,
+          conversation_id: conversation?.id ?? null,
+        },
+      });
+    }
 
     return {
       ok: true,
+      gift_id: gift.id,
+      sender_id: gift.sender_id,
+      receiver_id: gift.receiver_id,
+      response,
+      message: cleanMessage || null,
       status: response,
       redeem_token: redeemToken,
       redeem_expires_at: redeemExpiresAt?.toISOString() ?? null,
       conversation_id: conversation?.id ?? null,
+      notification,
     };
   }
 
@@ -402,17 +488,30 @@ class GiftsService {
 
     const senderIds = [...new Set(data.map(g => g.sender_id))];
 
-    const { data: users } = await supabase
-      .from("usuarios")
-      .select("id_usuario, nombre")
-      .in("id_usuario", senderIds);
+    const [{ data: users }, { data: profiles }] = await Promise.all([
+      supabase
+        .from("usuarios")
+        .select("id_usuario, nombre")
+        .in("id_usuario", senderIds),
+      supabase
+        .from("social_profiles")
+        .select("user_id, display_name, foto_url, avatar_url")
+        .in("user_id", senderIds),
+    ]);
 
     const usersById = new Map((users || []).map(u => [u.id_usuario, u]));
+    const profilesById = new Map((profiles || []).map(p => [p.user_id, p]));
 
     return data.map(g => ({
       ...g,
-      sender_nombre: usersById.get(g.sender_id)?.nombre ?? null,
-      sender_foto: null,
+      sender_nombre:
+        profilesById.get(g.sender_id)?.display_name?.trim() ||
+        usersById.get(g.sender_id)?.nombre?.trim() ||
+        "Alguien",
+      sender_foto:
+        profilesById.get(g.sender_id)?.foto_url ||
+        profilesById.get(g.sender_id)?.avatar_url ||
+        null,
     }));
   }
  
@@ -480,6 +579,23 @@ class GiftsService {
       .single();
 
     if (error) throw new Error(error.message);
+
+    const productName = data.product_nombre || "obsequio";
+    const notification = await NotificationsService.createNotification({
+      user_id: data.receiver_id,
+      actor_id: admin_id,
+      type: "gift_redeemed",
+      title: "Obsequio redimido",
+      message: `Tu obsequio ${productName} fue redimido correctamente.`,
+      metadata: {
+        gift_id: data.id,
+        product_name: productName,
+        redeemed_at: data.redeemed_at,
+      },
+    });
+
+    const io = getSocketInstance();
+    io?.to(`user:${data.receiver_id}`).emit("notification:new", notification);
 
     return {
       ok: true,

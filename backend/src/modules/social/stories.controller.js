@@ -2,8 +2,33 @@ import storiesService from "./stories.service.js";
 import multer from "multer";
 import { getIO } from '../../sockets/socketStore.js'
 import { NotificationsService } from "./notifications.service.js";
+import supabase from "../../config/supabaseClient.js";
 
 
+
+async function getReactionActorIdentity(actorId) {
+  const [{ data: profile, error: profileError }, { data: user, error: userError }] =
+    await Promise.all([
+      supabase
+        .from("social_profiles")
+        .select("display_name, foto_url")
+        .eq("user_id", actorId)
+        .maybeSingle(),
+      supabase
+        .from("usuarios")
+        .select("nombre")
+        .eq("id_usuario", actorId)
+        .maybeSingle(),
+    ]);
+
+  if (profileError) throw new Error(profileError.message);
+  if (userError) throw new Error(userError.message);
+
+  return {
+    actor_name: profile?.display_name?.trim() || user?.nombre?.trim() || "Alguien",
+    actor_photo: profile?.foto_url ?? null,
+  };
+}
 
 
 export const upload = multer({
@@ -52,11 +77,13 @@ export async function getStories(req, res) {
   try {
     const venue_id = Number(req.query.venue_id);
     const user_id = Number(req.query.user_id);
+    const viewer_user_id =
+      Number(req.user?.id_usuario || req.user?.id || req.user?.user_id) || null;
 
     if (!venue_id) return res.status(400).json({ error: "venue_id es requerido" });
     if (!user_id) return res.status(400).json({ error: "user_id es requerido" });
 
-    const result = await storiesService.getStoriesByUser({ venue_id, user_id });
+    const result = await storiesService.getStoriesByUser({ venue_id, user_id, viewer_user_id });
     return res.json(result);
   } catch (error) {
     console.error("Error getStories:", error);
@@ -83,18 +110,49 @@ export async function uploadStory(req, res) {
       venue_category,
     });
 
-    const peopleWithStories = await storiesService.getPeopleWithStories({ venue_id });
     const userStories = await storiesService.getStoriesByUser({ venue_id, user_id });
 
     const io = getIO();
 
-    io?.to(`venue:${venue_id}`).emit("stories:created", {
-      venue_id,
-      user_id,
-      story,
-      peopleWithStories,
-      userStories,
-    });
+    if (io) {
+      const socketsInVenue = await io.in(`venue:${venue_id}`).fetchSockets();
+      const socketsByUserId = new Map();
+
+      for (const venueSocket of socketsInVenue) {
+        const viewerUserId = venueSocket.data.user_id;
+
+        if (!viewerUserId) continue;
+
+        const normalizedUserId = String(viewerUserId);
+        const userSockets = socketsByUserId.get(normalizedUserId) || [];
+
+        userSockets.push(venueSocket);
+        socketsByUserId.set(normalizedUserId, userSockets);
+      }
+
+      for (const [viewerUserId, userSockets] of socketsByUserId.entries()) {
+        const peopleWithStories = await storiesService.getPeopleWithStories({
+          venue_id,
+          viewer_user_id: Number(viewerUserId),
+        });
+
+        console.log("[stories filtered]", {
+          venueId: venue_id,
+          viewerUserId: Number(viewerUserId),
+          visibleUserIds: peopleWithStories.map((item) => item.user_id),
+        });
+
+        for (const venueSocket of userSockets) {
+          venueSocket.emit("stories:created", {
+            venue_id,
+            user_id,
+            story,
+            peopleWithStories,
+            userStories,
+          });
+        }
+      }
+    }
 
     return res.status(201).json(story);
   } catch (error) {
@@ -221,16 +279,20 @@ export async function toggleReaction(req, res) {
       let notification = null;
 
       if (!isOwner && result.reaction) {
+        const actorIdentity = await getReactionActorIdentity(actorId);
+
         notification = await NotificationsService.createNotification({
           user_id: story.user_id,
           actor_id: actorId,
           venue_id: story.venue_id,
           type: "story_reaction",
           title: "Nueva reacción",
-          message: "Alguien reaccionó a tu historia.",
+          message: `Alguien reaccionó ${result.reaction} a tu historia.`,
           metadata: {
             story_id,
+            story_owner_id: story.user_id,
             reaction: result.reaction,
+            ...actorIdentity,
           },
         });
 

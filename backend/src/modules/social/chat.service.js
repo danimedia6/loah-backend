@@ -123,14 +123,8 @@ class ChatService {
     }
 
     async getConversationsByUser({ user_id }) {
-      const blockedRelations = await safetyService.getBlockedRelationsForUser(user_id);
-
-      const blockedUserIds = new Set(
-        blockedRelations.map((relation) =>
-          Number(relation.blocker_id) === Number(user_id)
-            ? Number(relation.blocked_id)
-            : Number(relation.blocker_id)
-        )
+      const hiddenUserIds = new Set(
+        await safetyService.getHiddenUserIdsForViewer(user_id)
       );
 
       const { data, error } = await supabase
@@ -156,7 +150,7 @@ class ChatService {
             ? Number(conv.user_two_id)
             : Number(conv.user_one_id);
 
-        return !blockedUserIds.has(Number(otherUserId));
+        return !hiddenUserIds.has(Number(otherUserId));
       });
 
       if (!visibleConversations.length) return [];

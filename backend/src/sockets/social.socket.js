@@ -45,14 +45,35 @@ function removeActiveSocket(userId, socketId) {
 async function emitPresenceUpdateForVenue(io, venueId) {
   const normalizedVenueId = Number(venueId)
   const socketsInVenue = await io.in(`venue:${normalizedVenueId}`).fetchSockets()
+  const socketsByUserId = new Map()
 
   for (const venueSocket of socketsInVenue) {
+    const viewerUserId = venueSocket.data.user_id
+
+    if (!viewerUserId) continue
+
+    const normalizedUserId = String(viewerUserId)
+    const userSockets = socketsByUserId.get(normalizedUserId) || []
+
+    userSockets.push(venueSocket)
+    socketsByUserId.set(normalizedUserId, userSockets)
+  }
+
+  for (const [viewerUserId, userSockets] of socketsByUserId.entries()) {
     const activeUsers = await socialService.getActiveUsers({
       venue_id: normalizedVenueId,
-      user_id: venueSocket.data.user_id,
+      user_id: Number(viewerUserId),
     })
 
-    venueSocket.emit('presence:update', activeUsers)
+    console.log("[presence filtered]", {
+      venueId: normalizedVenueId,
+      viewerUserId: Number(viewerUserId),
+      visibleUserIds: activeUsers.map((user) => user.user_id),
+    })
+
+    for (const venueSocket of userSockets) {
+      venueSocket.emit('presence:update', activeUsers)
+    }
   }
 }
 

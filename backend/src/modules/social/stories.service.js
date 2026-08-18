@@ -1,5 +1,6 @@
 import supabase from "../../config/supabaseClient.js";
 import { v4 as uuidv4 } from "uuid";
+import safetyService from "./safety.service.js";
 
 class StoriesService {
   async getPeopleWithStories({ venue_id, viewer_user_id = null }) {
@@ -39,6 +40,16 @@ class StoriesService {
     if (!userIds.length) return [];
 
     if (viewer_user_id) {
+      const hiddenUserIds = new Set(
+        await safetyService.getHiddenUserIdsForViewer(viewer_user_id)
+      );
+
+      for (const userId of [...map.keys()]) {
+        if (hiddenUserIds.has(Number(userId))) {
+          map.delete(userId);
+        }
+      }
+
       const { data: views, error: viewsError } = await supabase
         .from("story_views")
         .select("story_id")
@@ -58,17 +69,20 @@ class StoriesService {
     }
 
     // 2) trae nombres (y foto_url si luego existe)
+    const visibleUserIds = [...map.keys()];
+    if (!visibleUserIds.length) return [];
+
     const { data: users, error: usersError } = await supabase
       .from("usuarios")
       .select("id_usuario, nombre, is_suspended")
-      .in("id_usuario", userIds)
+      .in("id_usuario", visibleUserIds)
       .eq("is_suspended", false);
 
     if (usersError) throw new Error(usersError.message);
 
     const usersById = new Map((users || []).map(u => [u.id_usuario, u]));
 
-    return userIds
+    return visibleUserIds
       .filter((userId) => usersById.has(userId))
       .map(userId => ({
         user_id: userId,
@@ -132,8 +146,16 @@ class StoriesService {
     }));
   }
 
-  async getStoriesByUser({ venue_id, user_id }) {
+  async getStoriesByUser({ venue_id, user_id, viewer_user_id = null }) {
     const now = new Date().toISOString();
+
+    if (viewer_user_id) {
+      const hiddenUserIds = new Set(
+        await safetyService.getHiddenUserIdsForViewer(viewer_user_id)
+      );
+
+      if (hiddenUserIds.has(Number(user_id))) return [];
+    }
 
     const { data: user, error: userError } = await supabase
       .from("usuarios")
@@ -263,13 +285,25 @@ class StoriesService {
 
   if (usersError) throw new Error(usersError.message);
 
+  const { data: reactions, error: reactionsError } = await supabase
+    .from("story_reactions")
+    .select("user_id, reaction")
+    .eq("story_id", story_id)
+    .in("user_id", userIds);
+
+  if (reactionsError) throw new Error(reactionsError.message);
+
   const usersById = new Map((users || []).map(u => [u.id_usuario, u]));
+  const reactionsByUserId = new Map(
+    (reactions || []).map((r) => [Number(r.user_id), r.reaction])
+  );
 
   return (data || []).map(v => ({
     user_id: v.viewer_user_id,
     nombre: usersById.get(v.viewer_user_id)?.nombre ?? null,
     foto:  null,
     viewed_at: v.viewed_at,
+    reaction: reactionsByUserId.get(Number(v.viewer_user_id)) ?? null,
   }));
 }
 
