@@ -34,7 +34,6 @@ class SocialService {
   let userIds = [...latestPresenceByUser.keys()];
     if (!userIds.length) return [];
 
-    const userIdsBeforeHiddenFilter = [...userIds];
     let hiddenUserIds = new Set();
 
     if (user_id) {
@@ -48,13 +47,6 @@ class SocialService {
           !hiddenUserIds.has(Number(activeUserId))
       );
     }
-
-    console.log("[hidden debug:active-users]", {
-      user_id,
-      userIdsBeforeHiddenFilter,
-      hiddenUserIds: [...hiddenUserIds],
-      userIdsAfterHiddenFilter: userIds,
-    });
 
     if (!userIds.length) return [];
 

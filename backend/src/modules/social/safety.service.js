@@ -98,18 +98,7 @@ class SafetyService {
 
   async getHiddenUserIdsForViewer(user_id) {
     const userId = normalizeId(user_id);
-    if (!userId) {
-      console.log("[hidden debug:stored-blocks]", {
-        userId,
-        allBlocksForViewer: [],
-      });
-      console.log("[hidden debug:safety]", {
-        user_id,
-        rows: [],
-        hiddenIds: [],
-      });
-      return [];
-    }
+    if (!userId) return [];
 
     const { data, error } = await supabase
       .from("social_user_blocks")
@@ -126,22 +115,10 @@ class SafetyService {
 
     if (error) throw new Error(error.message);
 
-    const allBlocksForViewer = data || [];
-    const hiddenRows = allBlocksForViewer.filter(
+    const hiddenRows = (data || []).filter(
       (row) => String(row.visibility_mode || "").trim().toLowerCase() === "hidden"
     );
     const hiddenIds = hiddenRows.map((row) => Number(row.blocked_id));
-
-    console.log("[hidden debug:stored-blocks]", {
-      userId,
-      allBlocksForViewer,
-    });
-
-    console.log("[hidden debug:safety]", {
-      user_id,
-      rows: hiddenRows,
-      hiddenIds,
-    });
 
     return hiddenIds;
   }

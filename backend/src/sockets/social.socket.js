@@ -65,12 +65,6 @@ async function emitPresenceUpdateForVenue(io, venueId) {
       user_id: Number(viewerUserId),
     })
 
-    console.log("[presence filtered]", {
-      venueId: normalizedVenueId,
-      viewerUserId: Number(viewerUserId),
-      visibleUserIds: activeUsers.map((user) => user.user_id),
-    })
-
     for (const venueSocket of userSockets) {
       venueSocket.emit('presence:update', activeUsers)
     }

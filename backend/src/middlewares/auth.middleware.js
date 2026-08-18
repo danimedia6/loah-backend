@@ -33,29 +33,11 @@ export const optionalAuthMiddleware = (req, res, next) => {
     const auth = req.headers.authorization || ''
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
 
-    if (!token) {
-      console.log('[hidden debug:auth]', {
-        path: req.originalUrl || req.url,
-        receivedToken: false,
-        userId: null,
-      })
-      return next()
-    }
+    if (!token) return next()
 
     req.user = jwt.verify(token, process.env.JWT_SECRET || 'secret')
-    console.log('[hidden debug:auth]', {
-      path: req.originalUrl || req.url,
-      receivedToken: true,
-      userId: req.user?.id_usuario || req.user?.id || req.user?.user_id || null,
-    })
     return next()
   } catch (err) {
-    console.log('[hidden debug:auth]', {
-      path: req.originalUrl || req.url,
-      receivedToken: true,
-      userId: null,
-      error: err.message,
-    })
     return next()
   }
 }

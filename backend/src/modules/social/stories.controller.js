@@ -136,12 +136,6 @@ export async function uploadStory(req, res) {
           viewer_user_id: Number(viewerUserId),
         });
 
-        console.log("[stories filtered]", {
-          venueId: venue_id,
-          viewerUserId: Number(viewerUserId),
-          visibleUserIds: peopleWithStories.map((item) => item.user_id),
-        });
-
         for (const venueSocket of userSockets) {
           venueSocket.emit("stories:created", {
             venue_id,

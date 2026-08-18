@@ -6,12 +6,6 @@ export const getActiveUsers = async (req, res) => {
     const viewer_user_id =
       Number(req.user?.id_usuario || req.user?.id || req.user?.user_id || user_id) || null
 
-    console.log('[hidden debug:controller]', {
-      venue_id,
-      query_user_id: user_id,
-      viewer_user_id,
-    })
-
     const activeUsers = await socialService.getActiveUsers({
       venue_id: venue_id ? Number(venue_id) : null,
       user_id: viewer_user_id,
