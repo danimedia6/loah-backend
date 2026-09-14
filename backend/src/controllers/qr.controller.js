@@ -1,4 +1,6 @@
 import { generateAndUploadQr } from '../services/qr.service.js'
+import mesaService from '../services/mesa.service.js'
+import { assertVenueAdmin } from '../modules/social/venue-ownership.helper.js'
 
 
 /**
@@ -15,11 +17,8 @@ export async function generateQr(req, res) {
   const { format } = req.query
 
   try {
-    const venueId = req.user?.venue_id
-
-    if (!venueId) {
-      return res.status(403).json({ error: 'Admin sin venue asignado' })
-    }
+    const mesa = await mesaService.getMesaById(id)
+    const venueId = assertVenueAdmin(req.user, mesa.venue_id)
 
     const { buffer, contentType, filename, url } = await generateAndUploadQr(
       id,
@@ -47,7 +46,7 @@ export async function generateQr(req, res) {
       return res.status(400).json({ error: err.message })
     }
 
-    return res.status(500).json({ error: 'Error interno generando QR' })
+    return res.status(err.statusCode || 500).json({ error: err.message || 'Error interno generando QR' })
   }
 }
 
@@ -55,11 +54,7 @@ export async function generateVenueQr(req, res) {
   const { format } = req.query
 
   try {
-    const venueId = req.user?.venue_id
-
-    if (!venueId) {
-      return res.status(403).json({ error: 'Admin sin venue asignado' })
-    }
+    const venueId = assertVenueAdmin(req.user, req.user?.venue_id)
 
     const { buffer, contentType, filename, url } = await generateAndUploadQr(
       null,
@@ -82,6 +77,6 @@ export async function generateVenueQr(req, res) {
       return res.status(400).json({ error: err.message })
     }
 
-    return res.status(500).json({ error: 'Error interno generando QR' })
+    return res.status(err.statusCode || 500).json({ error: err.message || 'Error interno generando QR' })
   }
 }

@@ -16,9 +16,9 @@ const router = express.Router()
 /**
  * @route GET /api/mesas
  * @desc Obtener todas las mesas
- * @access Public
+ * @access Private (Admin)
  */
-router.get('/', getMesas)
+router.get('/', authMiddleware, requireRole('admin'), getMesas)
 
 /**
  * @route GET /api/mesas/generate-venue-qr
@@ -37,23 +37,23 @@ router.get('/:id', getMesaById)
 /**
  * @route POST /api/mesas
  * @desc Crear una nueva mesa
- * @access Private (Authenticated)
+ * @access Private (Admin)
  */
-router.post('/', authMiddleware, validate(createMesaSchema), createMesa)
+router.post('/', authMiddleware, requireRole('admin'), validate(createMesaSchema), createMesa)
 
 /**
  * @route PUT /api/mesas/:id
  * @desc Actualizar una mesa existente
- * @access Private (Authenticated)
+ * @access Private (Admin)
  */
-router.put('/:id', authMiddleware, validate(updateMesaSchema), updateMesa)
+router.put('/:id', authMiddleware, requireRole('admin'), validate(updateMesaSchema), updateMesa)
 
 /**
  * @route DELETE /api/mesas/:id
  * @desc Eliminar una mesa
- * @access Private (Authenticated)
+ * @access Private (Admin)
  */
-router.delete('/:id', authMiddleware, deleteMesa)
+router.delete('/:id', authMiddleware, requireRole('admin'), deleteMesa)
 
 /**
  * @route GET /api/mesas/:id/generate-qr

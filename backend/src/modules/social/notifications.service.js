@@ -29,6 +29,50 @@ export class NotificationsService {
     return data;
   }
 
+  static async findNotification({ user_id, actor_id, type, metadataContains = null }) {
+    let query = supabase
+      .from("social_notifications")
+      .select("*")
+      .eq("user_id", user_id)
+      .eq("actor_id", actor_id)
+      .eq("type", type)
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    if (metadataContains) {
+      query = query.contains("metadata", metadataContains);
+    }
+
+    const { data, error } = await query.maybeSingle();
+
+    if (error) throw error;
+
+    return data || null;
+  }
+
+  static async updateNotification({ id, title, message, metadata, is_read }) {
+    const updates = {
+      title,
+      message,
+      metadata,
+    };
+
+    if (typeof is_read === "boolean") {
+      updates.is_read = is_read;
+    }
+
+    const { data, error } = await supabase
+      .from("social_notifications")
+      .update(updates)
+      .eq("id", id)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    return data;
+  }
+
   static async getMyNotifications(user_id) {
     const { data, error } = await supabase
       .from("social_notifications")

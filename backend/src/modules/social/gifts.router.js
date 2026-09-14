@@ -20,7 +20,7 @@ router.post(
   redeemGift
 );
 
-router.post("/send", sendGift);
+router.post("/send", authMiddleware, sendGift);
 router.post("/:id/respond", respondGift);
 router.get("/pending", getPendingGifts);
 router.post("/:id/reaction", toggleReaction);

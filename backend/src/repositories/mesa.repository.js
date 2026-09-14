@@ -10,15 +10,19 @@ class MesaRepository {
    * @returns {Promise<Array<Object>>} Lista de mesas.
    * @throws {Error} Si ocurre un error en la consulta.
    */
-  async findAll() {
-    const { data, error } = await supabase
+  async findAll({ venue_id } = {}) {
+    let query = supabase
       .from('mesas')
       .select(`
         id_mesa,
         estado,
-        ubicacion
+        ubicacion,
+        venue_id
       `)
-      .order('id_mesa', { ascending: true })
+
+    if (venue_id) query = query.eq('venue_id', venue_id)
+
+    const { data, error } = await query.order('id_mesa', { ascending: true })
 
     if (error) throw new Error(error.message)
     return data
@@ -36,7 +40,8 @@ class MesaRepository {
       .select(`
         id_mesa,
         estado,
-        ubicacion
+        ubicacion,
+        venue_id
       `)
       .eq('id_mesa', id)
       .maybeSingle()
@@ -58,7 +63,8 @@ class MesaRepository {
       .select(`
         id_mesa,
         estado,
-        ubicacion
+        ubicacion,
+        venue_id
       `)
       .single()
 
@@ -83,15 +89,20 @@ class MesaRepository {
    * @returns {Promise<Object>} La mesa actualizada.
    * @throws {Error} Si ocurre un error en la actualización.
    */
-  async update(id, updates) {
-    const { data, error } = await supabase
+  async update(id, updates, venue_id = null) {
+    let query = supabase
       .from('mesas')
       .update(updates)
       .eq('id_mesa', id)
+
+    if (venue_id) query = query.eq('venue_id', venue_id)
+
+    const { data, error } = await query
       .select(`
         id_mesa,
         estado,
-        ubicacion
+        ubicacion,
+        venue_id
       `)
       .single()
 
@@ -105,11 +116,15 @@ class MesaRepository {
    * @returns {Promise<boolean>} True si se eliminó correctamente.
    * @throws {Error} Si ocurre un error en la eliminación.
    */
-  async delete(id) {
-    const { error } = await supabase
+  async delete(id, venue_id = null) {
+    let query = supabase
       .from('mesas')
       .delete()
       .eq('id_mesa', id)
+
+    if (venue_id) query = query.eq('venue_id', venue_id)
+
+    const { error } = await query
 
     if (error) throw new Error(error.message)
     return true

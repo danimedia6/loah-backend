@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken'
 import socialService from '../modules/social/social.service.js'
 import chatService from '../modules/social/chat.service.js'
 import { setSocketInstance } from './socketInstance.js'
+import { emitPresenceUpdateForVenue } from './presenceEmitter.js'
 
 const activeSocketsByUserId = new Map()
 
@@ -42,33 +43,13 @@ function removeActiveSocket(userId, socketId) {
   return sockets.size
 }
 
-async function emitPresenceUpdateForVenue(io, venueId) {
-  const normalizedVenueId = Number(venueId)
-  const socketsInVenue = await io.in(`venue:${normalizedVenueId}`).fetchSockets()
-  const socketsByUserId = new Map()
+function getAuthenticatedUserId(payload) {
+  return payload.id_usuario || payload.id || payload.user_id || null
+}
 
-  for (const venueSocket of socketsInVenue) {
-    const viewerUserId = venueSocket.data.user_id
-
-    if (!viewerUserId) continue
-
-    const normalizedUserId = String(viewerUserId)
-    const userSockets = socketsByUserId.get(normalizedUserId) || []
-
-    userSockets.push(venueSocket)
-    socketsByUserId.set(normalizedUserId, userSockets)
-  }
-
-  for (const [viewerUserId, userSockets] of socketsByUserId.entries()) {
-    const activeUsers = await socialService.getActiveUsers({
-      venue_id: normalizedVenueId,
-      user_id: Number(viewerUserId),
-    })
-
-    for (const venueSocket of userSockets) {
-      venueSocket.emit('presence:update', activeUsers)
-    }
-  }
+function isAdminForVenue(user, venueId) {
+  return (user?.rol || user?.role) === 'admin' &&
+    Number(user?.venue_id) === Number(venueId)
 }
 
 export function setupSocialSocket(io) {
@@ -82,7 +63,7 @@ export function setupSocialSocket(io) {
       }
 
       const payload = jwt.verify(token, process.env.JWT_SECRET || 'secret')
-      const userId = payload.id || payload.user_id || null
+      const userId = getAuthenticatedUserId(payload)
 
       if (!userId) {
         return next(new Error('Token sin usuario'))
@@ -118,25 +99,50 @@ export function setupSocialSocket(io) {
     const finalTableId = tableId || table_id || null
 
     if (!finalVenueId) {
-      socket.emit('presence:error', { error: 'venue_id requerido' })
+      socket.emit('presence:error', { code: 'VENUE_MISMATCH', error: 'venue_id requerido' })
       return
     }
 
-    socket.data.venue_id = Number(finalVenueId)
+    const normalizedVenueId = Number(finalVenueId)
+
+    if (isAdminForVenue(socket.data.user, normalizedVenueId)) {
+      await socialService.ensureVenueAdminPresence({
+        user_id: socket.data.user_id,
+        venue_id: normalizedVenueId,
+        table_id: finalTableId,
+      })
+    } else {
+      await socialService.heartbeat({
+        user_id: socket.data.user_id,
+        venue_id: normalizedVenueId,
+        table_id: finalTableId,
+      })
+    }
+
+    socket.data.venue_id = normalizedVenueId
     socket.data.table_id = finalTableId
 
     socket.join(`venue:${finalVenueId}`)
 
-    await socialService.heartbeat({
-      user_id: socket.data.user_id,
-      venue_id: Number(finalVenueId),
-      table_id: finalTableId,
-    })
-
-    await emitPresenceUpdateForVenue(io, finalVenueId)
+    await emitPresenceUpdateForVenue(finalVenueId, { io })
     } catch (error) {
         console.error('❌ Error en social:join-venue:', error.message)
-        socket.emit('presence:error', { error: error.message })
+        const targetVenueId = venueId || venue_id || null
+
+        if (targetVenueId) {
+          socket.leave(`venue:${targetVenueId}`)
+        }
+
+        if (targetVenueId && Number(socket.data.venue_id) === Number(targetVenueId)) {
+          delete socket.data.venue_id
+          delete socket.data.table_id
+        }
+
+        socket.emit('presence:error', {
+          code: error.code || 'PRESENCE_REQUIRED',
+          venue_id: targetVenueId,
+          error: error.message,
+        })
     }
     })
 
@@ -146,20 +152,48 @@ export function setupSocialSocket(io) {
         const finalTableId = tableId || table_id || socket.data.table_id || null
 
         if (!finalVenueId) {
-        socket.emit('presence:error', { error: 'venue_id requerido' })
+        socket.emit('presence:error', { code: 'VENUE_MISMATCH', error: 'venue_id requerido' })
         return
         }
 
-        await socialService.heartbeat({
-        user_id: socket.data.user_id,
-        venue_id: Number(finalVenueId),
-        table_id: finalTableId,
-        })
+        const normalizedVenueId = Number(finalVenueId)
 
-        await emitPresenceUpdateForVenue(io, finalVenueId)
+        if (isAdminForVenue(socket.data.user, normalizedVenueId)) {
+        await socialService.ensureVenueAdminPresence({
+            user_id: socket.data.user_id,
+            venue_id: normalizedVenueId,
+            table_id: finalTableId,
+        })
+        } else {
+        await socialService.heartbeat({
+            user_id: socket.data.user_id,
+            venue_id: normalizedVenueId,
+            table_id: finalTableId,
+        })
+        }
+
+        socket.data.venue_id = normalizedVenueId
+        socket.data.table_id = finalTableId
+
+        await emitPresenceUpdateForVenue(finalVenueId, { io })
     } catch (error) {
         console.error('❌ Error en presence:heartbeat:', error.message)
-        socket.emit('presence:error', { error: error.message })
+        const targetVenueId = venueId || venue_id || socket.data.venue_id || null
+
+        if (targetVenueId) {
+          socket.leave(`venue:${targetVenueId}`)
+        }
+
+        if (targetVenueId && Number(socket.data.venue_id) === Number(targetVenueId)) {
+          delete socket.data.venue_id
+          delete socket.data.table_id
+        }
+
+        socket.emit('presence:error', {
+          code: error.code || 'PRESENCE_REQUIRED',
+          venue_id: targetVenueId,
+          error: error.message,
+        })
     }
     })
 
@@ -269,7 +303,7 @@ export function setupSocialSocket(io) {
           venue_id: Number(venueId),
         })
 
-        await emitPresenceUpdateForVenue(io, venueId)
+        await emitPresenceUpdateForVenue(venueId, { io })
       } catch (error) {
         console.error('❌ Error al actualizar presencia en disconnect:', error.message)
       }

@@ -33,15 +33,19 @@ class ChatService {
     await safetyService.assertCanInteract(gift.sender_id, gift.receiver_id);
     await assertCanChat(gift.sender_id, gift.receiver_id);
 
-    const { data: story, error: storyError } = await supabase
+    let venue_id = gift.venue_id ? Number(gift.venue_id) : null;
+
+    if (!venue_id && gift.story_id) {
+      const { data: story, error: storyError } = await supabase
         .from("stories")
         .select("venue_id")
         .eq("id", gift.story_id)
         .maybeSingle();
 
-    if (storyError) throw new Error(storyError.message);
+      if (storyError) throw new Error(storyError.message);
 
-    const venue_id = story?.venue_id ?? null;
+      venue_id = story?.venue_id ?? null;
+    }
 
     const userA = Math.min(Number(gift.sender_id), Number(gift.receiver_id));
     const userB = Math.max(Number(gift.sender_id), Number(gift.receiver_id));
@@ -82,7 +86,7 @@ class ChatService {
         .from("conversations")
         .update({
           gift_id: gift.id,
-          venue_id: conversation.venue_id ?? venue_id,
+          venue_id: venue_id ?? conversation.venue_id,
           updated_at: new Date().toISOString(),
         })
         .eq("id", conversation.id);

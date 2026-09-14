@@ -1,6 +1,7 @@
 import supabase from "../../config/supabaseClient.js";
 import { v4 as uuidv4 } from "uuid";
 import safetyService from "./safety.service.js";
+import socialService from "./social.service.js";
 
 class StoriesService {
   async getPeopleWithStories({ venue_id, viewer_user_id = null }) {
@@ -16,10 +17,15 @@ class StoriesService {
 
     if (error) throw new Error(error.message);
 
+    const presentAuthorIds = await socialService.getActivePresenceUserIdsForVenue({
+      venue_id,
+    });
+    const activeStories = stories || [];
+
     // Agrupar por user_id (conteo + latestAt)
     const map = new Map();
     const storyIds = [];
-    for (const s of stories || []) {
+    for (const s of activeStories) {
       storyIds.push(s.id);
 
       if (!map.has(s.user_id)) {
@@ -60,7 +66,7 @@ class StoriesService {
 
       const viewedStoryIds = new Set((views || []).map((v) => String(v.story_id)));
 
-      for (const s of stories || []) {
+      for (const s of activeStories) {
         if (!viewedStoryIds.has(String(s.id))) continue;
 
         const cur = map.get(s.user_id);
@@ -68,32 +74,50 @@ class StoriesService {
       }
     }
 
-    // 2) trae nombres (y foto_url si luego existe)
+    // 2) trae nombres y foto pública del perfil social
     const visibleUserIds = [...map.keys()];
     if (!visibleUserIds.length) return [];
 
-    const { data: users, error: usersError } = await supabase
-      .from("usuarios")
-      .select("id_usuario, nombre, is_suspended")
-      .in("id_usuario", visibleUserIds)
-      .eq("is_suspended", false);
+    const [
+      { data: users, error: usersError },
+      { data: profiles, error: profilesError },
+    ] = await Promise.all([
+      supabase
+        .from("usuarios")
+        .select("id_usuario, nombre, is_suspended")
+        .in("id_usuario", visibleUserIds)
+        .eq("is_suspended", false),
+      supabase
+        .from("social_profiles")
+        .select("user_id, foto_url, avatar_url")
+        .in("user_id", visibleUserIds),
+    ]);
 
     if (usersError) throw new Error(usersError.message);
+    if (profilesError) throw new Error(profilesError.message);
 
     const usersById = new Map((users || []).map(u => [u.id_usuario, u]));
+    const profilesById = new Map(
+      (profiles || []).map((profile) => [Number(profile.user_id), profile])
+    );
 
     return visibleUserIds
       .filter((userId) => usersById.has(userId))
-      .map(userId => ({
-        user_id: userId,
-        nombre: usersById.get(userId)?.nombre ?? null,
-        foto:  null,
-        hasStory: true,
-        storyCount: map.get(userId)?.storyCount ?? 0,
-        unseenStoryCount: map.get(userId)?.unseenStoryCount ?? 0,
-        hasUnseenStory: (map.get(userId)?.unseenStoryCount ?? 0) > 0,
-        latestAt: map.get(userId)?.latestAt ?? null
-      }));
+      .map(userId => {
+        const profile = profilesById.get(Number(userId));
+
+        return {
+          user_id: userId,
+          nombre: usersById.get(userId)?.nombre ?? null,
+          foto: profile?.foto_url || profile?.avatar_url || null,
+          hasStory: true,
+          storyCount: map.get(userId)?.storyCount ?? 0,
+          unseenStoryCount: map.get(userId)?.unseenStoryCount ?? 0,
+          hasUnseenStory: (map.get(userId)?.unseenStoryCount ?? 0) > 0,
+          is_present: presentAuthorIds.has(Number(userId)),
+          latestAt: map.get(userId)?.latestAt ?? null
+        };
+      });
   }
 
   async getThemesSummary({ venue_id }) {
@@ -107,7 +131,8 @@ class StoriesService {
 
     if (error) throw new Error(error.message);
 
-    const userIds = [...new Set((stories || []).map((s) => s.user_id))];
+    const activeStories = stories || [];
+    const userIds = [...new Set(activeStories.map((s) => s.user_id))];
 
     if (!userIds.length) return [];
 
@@ -122,7 +147,7 @@ class StoriesService {
     const allowedUserIds = new Set((users || []).map((u) => Number(u.id_usuario)));
 
     const summary = new Map(); // category -> {activeUsers:Set, activeStories:number}
-    for (const s of stories || []) {
+    for (const s of activeStories) {
       if (!allowedUserIds.has(Number(s.user_id))) continue;
       const key = s.venue_category;
       if (!summary.has(key)) summary.set(key, { activeUsers: new Set(), activeStories: 0 });
@@ -166,6 +191,12 @@ class StoriesService {
     if (userError) throw new Error(userError.message);
     if (!user || user.is_suspended) return [];
 
+    const authorPresence = await socialService.getActivePresenceSession({
+      user_id,
+      venue_id,
+    });
+    const isPresent = Boolean(authorPresence);
+
     const { data, error } = await supabase
       .from("stories")
       .select(`
@@ -185,6 +216,7 @@ class StoriesService {
       ...s,
       view_count: s.view_count?.[0]?.count ?? 0,
       like_count: s.like_count?.[0]?.count ?? 0,
+      is_present: isPresent,
     }));
   }
 
@@ -193,6 +225,15 @@ class StoriesService {
 // import { v4 as uuidv4 } from "uuid";
 
   async uploadStory({ file, user_id, venue_id, venue_category }) {
+    const activePresence = await socialService.getActivePresenceSession({
+      user_id,
+      venue_id,
+    });
+
+    if (!activePresence) {
+      throw new Error("Debes validar tu presencia mediante el QR del establecimiento para publicar historias.");
+    }
+
     const ext = file.originalname.split(".").pop().toLowerCase();
     const fileName = `stories/${user_id}/${uuidv4()}.${ext}`;
 

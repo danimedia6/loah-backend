@@ -3,15 +3,31 @@ import { getIO } from '../../sockets/socketStore.js'
 
 export async function sendGift(req, res) {
   try {
-    const { story_id, sender_id, receiver_id, product_id } = req.body;
-    if (!story_id || !sender_id || !receiver_id || !product_id)
+    const { story_id, venue_id, receiver_id, product_id } = req.body;
+    const sender_id = Number(
+      req.user?.id_usuario ||
+        req.user?.id ||
+        req.user?.user_id
+    ) || null;
+
+    if (!sender_id) {
+      return res.status(401).json({ error: "No autenticado" });
+    }
+
+    if (!receiver_id || !product_id) {
       return res.status(400).json({ error: "Faltan campos requeridos" });
+    }
+
+    if (!story_id && !venue_id) {
+      return res.status(400).json({ error: "venue_id es requerido para regalos desde tarjeta" });
+    }
 
     const result = await giftsService.sendGift({
-      story_id:    Number(story_id),
-      sender_id:   Number(sender_id),
+      story_id: story_id ? Number(story_id) : null,
+      venue_id: venue_id ? Number(venue_id) : null,
+      sender_id,
       receiver_id: Number(receiver_id),
-      product_id:  Number(product_id),
+      product_id: Number(product_id),
     });
     
     return res.status(201).json(result);

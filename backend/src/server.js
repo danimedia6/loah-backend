@@ -21,6 +21,8 @@ import venuesRoutes from "./modules/social/venues.routes.js";
 import chatRoutes from "./modules/social/chat.routes.js";
 import socialProfileRoutes from "./modules/social/social-profile.routes.js";
 import safetyRoutes from "./modules/social/safety.routes.js";
+import presenceRoutes from "./modules/social/presence.routes.js";
+import { startPresenceExpirySweep } from "./modules/social/presence-expiry.sweep.js";
 
 import http from 'http'
 import { Server } from 'socket.io'
@@ -103,6 +105,7 @@ app.use('/api/admin', adminRoutes)
 app.use('/api/debug', debugRoutes)
 app.use("/api/social/gifts", giftsRouter);
 app.use("/api/social/venues", venuesRoutes);
+app.use("/api/social/presence", presenceRoutes);
 app.use("/api/social/chat", chatRoutes);
 app.use("/api/social/profile", socialProfileRoutes);
 app.use("/api/social/notifications", notificationsRoutes);
@@ -127,6 +130,8 @@ setIO(io)
 setupSocialSocket(io)
 
 if (process.env.NODE_ENV !== 'test') {
+  startPresenceExpirySweep(io)
+
   httpServer.listen(process.env.PORT || 4000, () => {
     console.log(`🚀 Servidor corriendo en puerto ${process.env.PORT || 4000}`)
     console.log('🔌 WebSockets activos con Socket.io')

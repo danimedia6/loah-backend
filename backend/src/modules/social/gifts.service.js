@@ -2,6 +2,7 @@ import crypto from "crypto";
 import supabase from "../../config/supabaseClient.js";
 import chatService from "./chat.service.js";
 import safetyService from "./safety.service.js";
+import socialService from "./social.service.js";
 import { NotificationsService } from "./notifications.service.js";
 import { getSocketInstance } from "../../sockets/socketInstance.js";
 
@@ -47,49 +48,86 @@ async function getGiftActorIdentity(userId) {
 class GiftsService {
 
 
-    async _validateActivePresence({ sender_id, receiver_id }) {
+    async _resolveGiftVenue({ story_id = null, venue_id = null, receiver_id }) {
+        if (story_id) {
+            const { data: story, error: storyError } = await supabase
+                .from("stories")
+                .select("id, user_id, venue_id")
+                .eq("id", story_id)
+                .single();
+
+            if (storyError || !story?.venue_id) {
+                console.error("[GIFT][VALIDATION] Error resolviendo venue de historia:", storyError?.message);
+                throw new Error("No se pudo resolver el venue de la historia");
+            }
+
+            if (venue_id && Number(venue_id) !== Number(story.venue_id)) {
+                throw new Error("venue_id no coincide con el venue de la historia");
+            }
+
+            if (receiver_id && Number(receiver_id) !== Number(story.user_id)) {
+                throw new Error("El destinatario no coincide con el propietario de la historia");
+            }
+
+            return {
+                story,
+                story_id: Number(story_id),
+                venue_id: Number(story.venue_id),
+            };
+        }
+
+        const venueId = Number(venue_id);
+        if (!venueId) {
+            throw new Error("venue_id es requerido para regalos desde tarjeta");
+        }
+
+        const { data: venue, error: venueError } = await supabase
+            .from("venues")
+            .select("id")
+            .eq("id", venueId)
+            .single();
+
+        if (venueError || !venue) {
+            throw new Error("Venue no encontrado");
+        }
+
+        return {
+            story: null,
+            story_id: null,
+            venue_id: venueId,
+        };
+    }
+
+    async _validateActivePresence({ venue_id, sender_id, receiver_id }) {
         console.log("[GIFT][VALIDATION] Iniciando validación", {
+            venue_id,
             sender_id,
             receiver_id,
         });
 
-        const { data: presences, error } = await supabase
-            .from("user_presence")
-            .select("user_id, venue_id, last_heartbeat_at")
-            .in("user_id", [sender_id, receiver_id]);
-
-        if (error) {
-            console.error("[GIFT][VALIDATION] Error consultando presencia:", error.message);
-            throw new Error(error.message);
-        }
-
-        const senderPresence = (presences || []).find(
-            (p) => Number(p.user_id) === Number(sender_id)
-        );
-        const receiverPresence = (presences || []).find(
-            (p) => Number(p.user_id) === Number(receiver_id)
-        );
+        const [senderPresence, receiverPresence] = await Promise.all([
+            socialService.getActivePresenceSession({
+                user_id: sender_id,
+                venue_id,
+            }),
+            socialService.getActivePresenceSession({
+                user_id: receiver_id,
+                venue_id,
+            }),
+        ]);
 
         console.log("[GIFT][VALIDATION] Presencias encontradas:", {
             senderPresence,
             receiverPresence,
+            venue_id,
         });
 
-        const nowMs = Date.now();
-        const MAX_HEARTBEAT_AGE_MS = 15 * 60 * 1000;
-
-        const isPresenceActive = (presence) => {
-            if (!presence?.last_heartbeat_at) return false;
-            const lastHeartbeatMs = new Date(presence.last_heartbeat_at).getTime();
-            return nowMs - lastHeartbeatMs < MAX_HEARTBEAT_AGE_MS;
-        };
-
-        if (!senderPresence || !isPresenceActive(senderPresence)) {
+        if (!senderPresence) {
             console.warn("[GIFT][VALIDATION] Sender no activo", senderPresence);
             throw new Error("El remitente no está activo en el venue");
         }
 
-        if (!receiverPresence || !isPresenceActive(receiverPresence)) {
+        if (!receiverPresence) {
             console.warn("[GIFT][VALIDATION] Receiver no activo", receiverPresence);
             throw new Error("El destinatario no está activo en el venue");
         }
@@ -103,18 +141,18 @@ class GiftsService {
         }
 
         console.log("[GIFT][VALIDATION] ✅ Validación exitosa", {
-            venue_id: senderPresence.venue_id,
+            venue_id,
         });
 
         return {
             senderPresence,
             receiverPresence,
-            venue_id: senderPresence.venue_id,
+            venue_id,
         };
     }
 
   // Remitente envía un obsequio — solo guarda en gifts, NO toca pedidos aún
-  async sendGift({ story_id, sender_id, receiver_id, product_id }) {
+  async sendGift({ story_id = null, venue_id = null, sender_id, receiver_id, product_id }) {
     await safetyService.assertCanInteract(sender_id, receiver_id);
 
     const receiverProfile = await getSocialProfile(receiver_id);
@@ -123,34 +161,65 @@ class GiftsService {
       throw new Error("Este usuario no está recibiendo obsequios.");
     }
 
+    const giftContext = await this._resolveGiftVenue({
+      story_id,
+      venue_id,
+      receiver_id,
+    });
+
     const presenceContext = await this._validateActivePresence({
+      venue_id: giftContext.venue_id,
       sender_id,
       receiver_id,
     });
 
     const { data: product, error: productError } = await supabase
       .from("productos")
-      .select("id_producto, nombre, precio")
+      .select("id_producto, nombre, precio, disponible, venue_id")
       .eq("id_producto", product_id)
       .single();
 
     if (productError || !product) throw new Error("Producto no encontrado");
+    if (product.disponible === false) throw new Error("Producto no disponible");
+    if (Number(product.venue_id) !== Number(giftContext.venue_id)) {
+      throw new Error("El producto no pertenece al venue seleccionado");
+    }
 
-    const { data: existing, error: existingError } = await supabase
+    let existingQuery = supabase
       .from("gifts")
       .select("id")
-      .eq("story_id", story_id)
       .eq("sender_id", sender_id)
-      .eq("status", "pending")
-      .maybeSingle();
+      .eq("status", "pending");
+
+    if (giftContext.story_id) {
+      existingQuery = existingQuery.eq("story_id", giftContext.story_id);
+    } else {
+      const duplicateWindowStart = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      existingQuery = existingQuery
+        .is("story_id", null)
+        .eq("receiver_id", receiver_id)
+        .eq("product_id", product_id)
+        .eq("venue_id", giftContext.venue_id)
+        .gte("created_at", duplicateWindowStart);
+    }
+
+    const { data: existingRows, error: existingError } = await existingQuery.limit(1);
+    const existing = existingRows?.[0] ?? null;
 
     if (existingError) throw new Error(existingError.message);
-    if (existing) throw new Error("Ya tienes un obsequio pendiente en esta historia");
+    if (existing) {
+      throw new Error(
+        giftContext.story_id
+          ? "Ya tienes un obsequio pendiente en esta historia"
+          : "Ya enviaste este obsequio recientemente"
+      );
+    }
 
     const { data, error } = await supabase
       .from("gifts")
       .insert({
-        story_id,
+        story_id: giftContext.story_id,
+        venue_id: giftContext.venue_id,
         sender_id,
         receiver_id,
         product_id,
@@ -179,9 +248,10 @@ class GiftsService {
         product_name: product.nombre,
         response: null,
         ...senderIdentity,
+        venue_id: giftContext.venue_id,
         sender_id,
         receiver_id,
-        story_id,
+        story_id: giftContext.story_id,
       },
     });
 
@@ -296,6 +366,7 @@ class GiftsService {
           gift_id: gift.id,
           product_name: gift.product_nombre,
           response: "declined",
+          venue_id: gift.venue_id ?? null,
           sender_id: gift.sender_id,
           receiver_id: gift.receiver_id,
         },
@@ -325,6 +396,7 @@ class GiftsService {
           product_name: gift.product_nombre,
           response,
           ...receiverIdentity,
+          venue_id: gift.venue_id ?? null,
           sender_id: gift.sender_id,
           receiver_id: gift.receiver_id,
           message: cleanMessage || null,
@@ -338,6 +410,7 @@ class GiftsService {
       gift_id: gift.id,
       sender_id: gift.sender_id,
       receiver_id: gift.receiver_id,
+      venue_id: gift.venue_id ?? null,
       response,
       message: cleanMessage || null,
       status: response,
@@ -350,20 +423,27 @@ class GiftsService {
 
   // Crea el pedido en nombre del remitente
   async _createGiftOrder(gift) {
-    const { data: story, error: storyError } = await supabase
-      .from("stories")
-      .select("venue_id")
-      .eq("id", gift.story_id)
-      .single();
+    let venue_id = gift.venue_id ? Number(gift.venue_id) : null;
 
-    if (storyError || !story) {
-      console.error("[GIFT] Error resolviendo story para pedido:", storyError);
-      throw new Error("No se pudo resolver el venue de la historia");
+    if (!venue_id && gift.story_id) {
+      const { data: story, error: storyError } = await supabase
+        .from("stories")
+        .select("venue_id")
+        .eq("id", gift.story_id)
+        .single();
+
+      if (storyError || !story) {
+        console.error("[GIFT] Error resolviendo story para pedido:", storyError);
+        throw new Error("No se pudo resolver el venue de la historia");
+      }
+
+      venue_id = story.venue_id;
     }
 
-    const venue_id = story.venue_id;
+    if (!venue_id) {
+      throw new Error("No se pudo resolver el venue del obsequio");
+    }
 
-    console.log("[GIFT] story lookup para pedido:", story);
     console.log("[GIFT] venue_id resuelto para pedido:", venue_id);
 
     const { data: activePedido, error: activePedidoError } = await supabase
@@ -471,6 +551,7 @@ class GiftsService {
         product_precio,
         status,
         receiver_message,
+        venue_id,
         redeem_token,
         redeem_expires_at,
         redeemed_at,

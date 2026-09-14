@@ -93,7 +93,8 @@ export async function getStories(req, res) {
 
 export async function uploadStory(req, res) {
   try {
-    const user_id = Number(req.body.user_id);
+    const user_id =
+      Number(req.user?.id_usuario || req.user?.id || req.user?.user_id) || null;
     const venue_id = Number(req.body.venue_id);
     const venue_category = req.body.venue_category ?? "bares";
 

@@ -1,4 +1,5 @@
 import mesaService from '../services/mesa.service.js'
+import { assertVenueAdmin } from '../modules/social/venue-ownership.helper.js'
 
 /**
  * Controlador para gestionar las mesas.
@@ -12,11 +13,12 @@ import mesaService from '../services/mesa.service.js'
  */
 export const getMesas = async (req, res) => {
   try {
-    const mesas = await mesaService.getMesas()
+    const venueId = assertVenueAdmin(req.user, req.user?.venue_id)
+    const mesas = await mesaService.getMesas({ venue_id: venueId })
     res.json(mesas)
   } catch (error) {
     console.error('Error al obtener mesas:', error)
-    res.status(500).json({ error: 'Error interno del servidor' })
+    res.status(error.statusCode || 500).json({ error: error.message || 'Error interno del servidor' })
   }
 }
 
@@ -48,11 +50,12 @@ export const getMesaById = async (req, res) => {
  */
 export const createMesa = async (req, res) => {
   try {
-    const nuevaMesa = await mesaService.createMesa(req.body)
+    const venueId = assertVenueAdmin(req.user, req.user?.venue_id)
+    const nuevaMesa = await mesaService.createMesa(req.body, venueId)
     res.status(201).json(nuevaMesa)
   } catch (error) {
     console.error('Error al crear mesa:', error)
-    res.status(500).json({ error: 'Error interno del servidor' })
+    res.status(error.statusCode || 500).json({ error: error.message || 'Error interno del servidor' })
   }
 }
 
@@ -65,14 +68,15 @@ export const createMesa = async (req, res) => {
 export const updateMesa = async (req, res) => {
   const { id } = req.params
   try {
-    const mesaActualizada = await mesaService.updateMesa(id, req.body)
+    const venueId = assertVenueAdmin(req.user, req.user?.venue_id)
+    const mesaActualizada = await mesaService.updateMesa(id, req.body, venueId)
     res.json(mesaActualizada)
   } catch (error) {
     console.error('Error al actualizar mesa:', error)
     if (error.message === 'Mesa no encontrada') {
       return res.status(404).json({ error: error.message })
     }
-    res.status(500).json({ error: 'Error interno del servidor' })
+    res.status(error.statusCode || 500).json({ error: error.message || 'Error interno del servidor' })
   }
 }
 
@@ -85,10 +89,14 @@ export const updateMesa = async (req, res) => {
 export const deleteMesa = async (req, res) => {
   const { id } = req.params
   try {
-    await mesaService.deleteMesa(id)
+    const venueId = assertVenueAdmin(req.user, req.user?.venue_id)
+    await mesaService.deleteMesa(id, venueId)
     res.status(204).send()
   } catch (error) {
     console.error('Error al eliminar mesa:', error)
-    res.status(500).json({ error: 'Error interno del servidor' })
+    if (error.message === 'Mesa no encontrada') {
+      return res.status(404).json({ error: error.message })
+    }
+    res.status(error.statusCode || 500).json({ error: error.message || 'Error interno del servidor' })
   }
 }

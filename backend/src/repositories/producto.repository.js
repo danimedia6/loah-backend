@@ -7,10 +7,10 @@ class ProductoRepository {
   
   /**
    * Obtiene productos con filtros y paginación.
-   * @param {Object} filters - Filtros (page, limit, category, search).
+   * @param {Object} filters - Filtros (page, limit, category, search, venue_id, disponible).
    * @returns {Promise<Object>} Datos y conteo total.
    */
-  async findAll({ page = 1, limit = 12, category, search }) {
+  async findAll({ page = 1, limit = 12, category, search, venue_id, disponible }) {
     const p = Math.max(parseInt(page, 10) || 1, 1)
     const l = Math.min(Math.max(parseInt(limit, 10) || 12, 1), 100)
     const start = (p - 1) * l
@@ -24,6 +24,7 @@ class ProductoRepository {
         descripcion,
         precio,
         disponible,
+        venue_id,
         imagen_url,
         id_categoria,
         promedio_calificacion,
@@ -32,6 +33,10 @@ class ProductoRepository {
       `, { count: 'exact' })
 
     if (category) query = query.eq('id_categoria', category)
+    if (venue_id) query = query.eq('venue_id', venue_id)
+    if (disponible !== undefined && disponible !== null && disponible !== '') {
+      query = query.eq('disponible', String(disponible) === 'true' || disponible === true)
+    }
     if (search) query = query.ilike('nombre', `%${search}%`)
     
     query = query.order('nombre', { ascending: true })
@@ -57,6 +62,7 @@ class ProductoRepository {
         descripcion,
         precio,
         disponible,
+        venue_id,
         imagen_url,
         id_categoria,
         promedio_calificacion,
@@ -80,7 +86,7 @@ class ProductoRepository {
     
     const { data, error } = await supabase
       .from('productos')
-      .select('id_producto, nombre, precio, disponible')
+      .select('id_producto, nombre, precio, disponible, venue_id')
       .in('id_producto', ids)
 
     if (error) throw new Error(error.message)
@@ -88,33 +94,36 @@ class ProductoRepository {
   }
 
   /**
-   * Busca productos por nombre y categoría (para validación de duplicados).
+   * Busca productos por nombre, categoría y venue (para validación de duplicados).
    * @param {string} nombre - Nombre del producto.
    * @param {number} id_categoria - ID de la categoría.
    * @returns {Promise<Array<Object>>} Lista de productos coincidentes.
    */
-  async findByNameAndCategory(nombre, id_categoria) {
+  async findByNameCategoryAndVenue(nombre, id_categoria, venue_id) {
     const { data, error } = await supabase
       .from('productos')
       .select('id_producto')
       .ilike('nombre', nombre)
       .eq('id_categoria', id_categoria)
+      .eq('venue_id', venue_id)
 
     if (error) throw new Error(error.message)
     return data
   }
 
   /**
-   * Busca productos por nombre excluyendo un ID (para validación de duplicados en update).
+   * Busca productos por nombre, categoría y venue excluyendo un ID.
    * @param {string} nombre - Nombre del producto.
    * @param {number} id_producto - ID a excluir.
    * @returns {Promise<Array<Object>>} Lista de productos coincidentes.
    */
-  async findByNameExcludingId(nombre, id_producto) {
+  async findByNameCategoryVenueExcludingId(nombre, id_categoria, venue_id, id_producto) {
     const { data, error } = await supabase
       .from('productos')
       .select('id_producto')
       .ilike('nombre', nombre)
+      .eq('id_categoria', id_categoria)
+      .eq('venue_id', venue_id)
       .neq('id_producto', id_producto)
 
     if (error) throw new Error(error.message)
@@ -136,6 +145,7 @@ class ProductoRepository {
         descripcion,
         precio,
         disponible,
+        venue_id,
         imagen_url,
         id_categoria
       `)
@@ -151,17 +161,22 @@ class ProductoRepository {
    * @param {Object} updates - Datos a actualizar.
    * @returns {Promise<Object>} El producto actualizado.
    */
-  async update(id, updates) {
-    const { data, error } = await supabase
+  async update(id, updates, venue_id = null) {
+    let query = supabase
       .from('productos')
       .update(updates)
       .eq('id_producto', id)
+
+    if (venue_id) query = query.eq('venue_id', venue_id)
+
+    const { data, error } = await query
       .select(`
         id_producto,
         nombre,
         descripcion,
         precio,
         disponible,
+        venue_id,
         imagen_url,
         id_categoria
       `)
@@ -176,11 +191,15 @@ class ProductoRepository {
    * @param {number} id - ID del producto.
    * @returns {Promise<boolean>} True si se eliminó correctamente.
    */
-  async delete(id) {
-    const { error } = await supabase
+  async delete(id, venue_id = null) {
+    let query = supabase
       .from('productos')
       .delete()
       .eq('id_producto', id)
+
+    if (venue_id) query = query.eq('venue_id', venue_id)
+
+    const { error } = await query
 
     if (error) throw new Error(error.message)
     return true

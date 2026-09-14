@@ -69,6 +69,9 @@ export async function generateAndUploadQr(mesaId, format, venueId) {
 
   const venue = venueId
   if (!venue) throw new Error("Venue requerido para generar QR")
+  if (mesa && Number(mesa.venue_id) !== Number(venue)) {
+    throw new Error("Mesa no pertenece al venue")
+  }
   
 
   const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173'

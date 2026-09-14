@@ -3,6 +3,12 @@ import pedidoRepository from '../repositories/pedido.repository.js'
 import supabase from '../config/supabaseClient.js'
 import crypto from 'crypto'
 
+const withStatus = (message, statusCode) => {
+  const error = new Error(message)
+  error.statusCode = statusCode
+  return error
+}
+
 /**
  * Servicio para la lógica de negocio de Productos.
  */
@@ -61,7 +67,7 @@ class ProductoService {
    * @returns {Promise<Object>} El producto creado.
    * @throws {Error} Si el nombre ya existe o falla la subida de imagen.
    */
-  async createProducto(data, file) {
+  async createProducto(data, file, venue_id) {
     const { nombre, descripcion, precio, id_categoria, disponible } = data
     let imagen_url = data.imagen_url
 
@@ -71,7 +77,7 @@ class ProductoService {
     }
 
     // Validate duplicates
-    const existing = await productoRepository.findByNameAndCategory(nombre, id_categoria)
+    const existing = await productoRepository.findByNameCategoryAndVenue(nombre, id_categoria, venue_id)
     if (existing && existing.length > 0) {
       throw new Error('Ya existe un producto con ese nombre en la categoría')
     }
@@ -81,6 +87,7 @@ class ProductoService {
       descripcion,
       precio,
       id_categoria,
+      venue_id,
       disponible,
       imagen_url
     })
@@ -96,31 +103,43 @@ class ProductoService {
    * @returns {Promise<Object>} El producto actualizado.
    * @throws {Error} Si el nombre ya existe.
    */
-  async updateProducto(id, data, file) {
+  async updateProducto(id, data, file, venue_id) {
     const { nombre, descripcion, precio, id_categoria, disponible } = data
     let imagen_url = data.imagen_url
+    const existingProduct = await productoRepository.findById(id)
+
+    if (!existingProduct) throw withStatus('Producto no encontrado', 404)
+    if (Number(existingProduct.venue_id) !== Number(venue_id)) {
+      throw withStatus('No autorizado para modificar este producto', 403)
+    }
 
     // Handle Image Upload
     if (file) {
       imagen_url = await this._uploadImage(file)
       
       // Try to delete old image
-      const existingProduct = await productoRepository.findById(id)
       if (existingProduct && existingProduct.imagen_url) {
         await this._deleteImage(existingProduct.imagen_url)
       }
     }
 
     // Validate duplicates
-    if (nombre) {
-      const dup = await productoRepository.findByNameExcludingId(nombre, id)
+    if (nombre || id_categoria) {
+      const duplicateName = nombre ?? existingProduct.nombre
+      const duplicateCategory = id_categoria ?? existingProduct.id_categoria
+      const dup = await productoRepository.findByNameCategoryVenueExcludingId(
+        duplicateName,
+        duplicateCategory,
+        venue_id,
+        id
+      )
       if (dup && dup.length > 0) throw new Error('Ya existe un producto con ese nombre')
     }
 
     const updates = { nombre, descripcion, precio, id_categoria, disponible }
     if (imagen_url !== undefined) updates.imagen_url = imagen_url
 
-    const updatedProduct = await productoRepository.update(id, updates)
+    const updatedProduct = await productoRepository.update(id, updates, venue_id)
     return updatedProduct
   }
 
@@ -129,14 +148,19 @@ class ProductoService {
    * @param {number} id - ID del producto.
    * @returns {Promise<void>}
    */
-  async deleteProducto(id) {
+  async deleteProducto(id, venue_id) {
     // Try to delete image first
     const existing = await productoRepository.findById(id)
+    if (!existing) throw withStatus('Producto no encontrado', 404)
+    if (Number(existing.venue_id) !== Number(venue_id)) {
+      throw withStatus('No autorizado para eliminar este producto', 403)
+    }
+
     if (existing && existing.imagen_url) {
       await this._deleteImage(existing.imagen_url)
     }
 
-    return await productoRepository.delete(id)
+    return await productoRepository.delete(id, venue_id)
   }
 
   /**
