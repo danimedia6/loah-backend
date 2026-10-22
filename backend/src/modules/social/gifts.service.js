@@ -5,6 +5,10 @@ import safetyService from "./safety.service.js";
 import socialService from "./social.service.js";
 import { NotificationsService } from "./notifications.service.js";
 import { getSocketInstance } from "../../sockets/socketInstance.js";
+import {
+  GiftError, giftId, giftRecordId, giftActor, assertGiftIdentity, giftAdminVenue,
+  assertGiftPaymentsAvailable, pickGiftFields, pendingGiftFields, staffGiftFields, giftNotification,
+} from "./gifts.security.js";
 
 async function getSocialProfile(userId) {
   const { data, error } = await supabase
@@ -58,15 +62,15 @@ class GiftsService {
 
             if (storyError || !story?.venue_id) {
                 console.error("[GIFT][VALIDATION] Error resolviendo venue de historia:", storyError?.message);
-                throw new Error("No se pudo resolver el venue de la historia");
+                throw new GiftError("No se pudo resolver el venue de la historia");
             }
 
             if (venue_id && Number(venue_id) !== Number(story.venue_id)) {
-                throw new Error("venue_id no coincide con el venue de la historia");
+                throw new GiftError("venue_id no coincide con el venue de la historia");
             }
 
             if (receiver_id && Number(receiver_id) !== Number(story.user_id)) {
-                throw new Error("El destinatario no coincide con el propietario de la historia");
+                throw new GiftError("El destinatario no coincide con el propietario de la historia");
             }
 
             return {
@@ -78,7 +82,7 @@ class GiftsService {
 
         const venueId = Number(venue_id);
         if (!venueId) {
-            throw new Error("venue_id es requerido para regalos desde tarjeta");
+            throw new GiftError("venue_id es requerido para regalos desde tarjeta");
         }
 
         const { data: venue, error: venueError } = await supabase
@@ -88,7 +92,7 @@ class GiftsService {
             .single();
 
         if (venueError || !venue) {
-            throw new Error("Venue no encontrado");
+            throw new GiftError("Venue no encontrado");
         }
 
         return {
@@ -99,12 +103,6 @@ class GiftsService {
     }
 
     async _validateActivePresence({ venue_id, sender_id, receiver_id }) {
-        console.log("[GIFT][VALIDATION] Iniciando validación", {
-            venue_id,
-            sender_id,
-            receiver_id,
-        });
-
         const [senderPresence, receiverPresence] = await Promise.all([
             socialService.getActivePresenceSession({
                 user_id: sender_id,
@@ -116,33 +114,17 @@ class GiftsService {
             }),
         ]);
 
-        console.log("[GIFT][VALIDATION] Presencias encontradas:", {
-            senderPresence,
-            receiverPresence,
-            venue_id,
-        });
-
         if (!senderPresence) {
-            console.warn("[GIFT][VALIDATION] Sender no activo", senderPresence);
-            throw new Error("El remitente no está activo en el venue");
+            throw new GiftError("El remitente no está activo en el venue");
         }
 
         if (!receiverPresence) {
-            console.warn("[GIFT][VALIDATION] Receiver no activo", receiverPresence);
-            throw new Error("El destinatario no está activo en el venue");
+            throw new GiftError("El destinatario no está activo en el venue");
         }
 
         if (Number(senderPresence.venue_id) !== Number(receiverPresence.venue_id)) {
-            console.warn("[GIFT][VALIDATION] Venue mismatch", {
-            senderVenue: senderPresence.venue_id,
-            receiverVenue: receiverPresence.venue_id,
-            });
-            throw new Error("Ambos usuarios deben estar en el mismo lugar para enviar obsequios");
+            throw new GiftError("Ambos usuarios deben estar en el mismo lugar para enviar obsequios");
         }
-
-        console.log("[GIFT][VALIDATION] ✅ Validación exitosa", {
-            venue_id,
-        });
 
         return {
             senderPresence,
@@ -152,13 +134,29 @@ class GiftsService {
     }
 
   // Remitente envía un obsequio — solo guarda en gifts, NO toca pedidos aún
-  async sendGift({ story_id = null, venue_id = null, sender_id, receiver_id, product_id }) {
-    await safetyService.assertCanInteract(sender_id, receiver_id);
+  async sendGift({ actor, story_id = null, venue_id = null, sender_id, receiver_id, product_id }) {
+    sender_id = assertGiftIdentity(actor, sender_id);
+    receiver_id = giftId(receiver_id, "receiver_id");
+    product_id = giftId(product_id, "product_id");
+    if (story_id != null) story_id = giftId(story_id, "story_id");
+    if (venue_id != null) venue_id = giftId(venue_id, "venue_id");
+    if (sender_id === receiver_id) throw new GiftError("No puedes enviarte obsequios");
+
+    const { data: users, error: usersError } = await supabase.from("usuarios")
+      .select("id_usuario, is_suspended").in("id_usuario", [sender_id, receiver_id]);
+    if (usersError) throw usersError;
+    if (!users || [sender_id, receiver_id].some((id) =>
+      !users.some((user) => Number(user.id_usuario) === id && !user.is_suspended))) {
+      throw new GiftError("Usuarios no disponibles para obsequios");
+    }
+    if (await safetyService.isContactBlocked(sender_id, receiver_id)) {
+      throw new GiftError("No puedes interactuar con este usuario", 403, "GIFT_FORBIDDEN");
+    }
 
     const receiverProfile = await getSocialProfile(receiver_id);
 
     if (!receiverProfile.allow_gifts) {
-      throw new Error("Este usuario no está recibiendo obsequios.");
+      throw new GiftError("Este usuario no está recibiendo obsequios.");
     }
 
     const giftContext = await this._resolveGiftVenue({
@@ -179,11 +177,14 @@ class GiftsService {
       .eq("id_producto", product_id)
       .single();
 
-    if (productError || !product) throw new Error("Producto no encontrado");
-    if (product.disponible === false) throw new Error("Producto no disponible");
+    if (productError) throw productError;
+    if (!product) throw new GiftError("Producto no encontrado");
+    if (product.disponible === false) throw new GiftError("Producto no disponible");
     if (Number(product.venue_id) !== Number(giftContext.venue_id)) {
-      throw new Error("El producto no pertenece al venue seleccionado");
+      throw new GiftError("El producto no pertenece al venue seleccionado");
     }
+
+    assertGiftPaymentsAvailable();
 
     let existingQuery = supabase
       .from("gifts")
@@ -258,41 +259,51 @@ class GiftsService {
     const io = getSocketInstance();
 
     if (io) {
-      io.to(`user:${receiver_id}`).emit("notification:new", notification);
-      io.to(`user:${receiver_id}`).emit("gift:created", data);
+      io.to(`user:${receiver_id}`).emit("notification:new", giftNotification(notification));
+      io.to(`user:${receiver_id}`).emit("gift:created", pickGiftFields(data, pendingGiftFields));
     }
 
-    return data;
+    return pickGiftFields(data, pendingGiftFields);
   }
 
   // Destinatario responde al obsequio
   
-  async respondGift({ gift_id, receiver_id, response, message }) {
+  async respondGift({ actor, gift_id, receiver_id, response, message }) {
+    receiver_id = assertGiftIdentity(actor, receiver_id);
+    gift_id = giftRecordId(gift_id);
+    if (message != null && (typeof message !== "string" || message.length > 1000)) {
+      throw new GiftError("Mensaje invalido (maximo 1000 caracteres)");
+    }
     const cleanMessage = typeof message === "string" ? message.trim() : "";
-
-    console.log("[GIFT] respondGift input:", {
-      gift_id,
-      receiver_id,
-      response,
-      message: cleanMessage || null,
-    });
 
     const validResponses = ["accepted_anon", "accepted_id", "accepted_chat", "declined"];
     if (!validResponses.includes(response)) {
-      throw new Error("Respuesta inválida");
+      throw new GiftError("Respuesta inválida");
     }
 
     const { data: gift, error: giftError } = await supabase
       .from("gifts")
-      .select("*")
+      .select("id, story_id, venue_id, sender_id, receiver_id, product_id, product_nombre, product_precio, status")
       .eq("id", gift_id)
       .eq("receiver_id", receiver_id)
       .eq("status", "pending")
-      .single();
+      .maybeSingle();
 
-    if (giftError || !gift) {
-      throw new Error("Obsequio no encontrado o ya respondido");
+    if (giftError) throw giftError;
+    if (!gift) {
+      throw new GiftError("Obsequio no disponible", 404, "GIFT_NOT_AVAILABLE");
     }
+
+    if (response !== "declined") assertGiftPaymentsAvailable();
+
+    // Claim the pending state before any conversation or notification side effect.
+    const { data: claimed, error: claimError } = await supabase.from("gifts")
+      .update({ status: response, responded_at: new Date().toISOString(),
+        ...(cleanMessage ? { receiver_message: cleanMessage } : {}) })
+      .eq("id", gift_id).eq("receiver_id", receiver_id).eq("status", "pending")
+      .select("id").maybeSingle();
+    if (claimError) throw claimError;
+    if (!claimed) throw new GiftError("Obsequio no disponible", 409, "GIFT_NOT_AVAILABLE");
 
     let redeemToken = null;
     let redeemExpiresAt = null;
@@ -331,7 +342,7 @@ class GiftsService {
       }
 
       // 🔹 (por ahora dejamos esto comentado si ya migraste a QR)
-      // await this._createGiftOrder(gift);
+      // await this.#createGiftOrder(gift);
     }
 
     const updatePayload = {
@@ -342,14 +353,14 @@ class GiftsService {
       ...(redeemExpiresAt ? { redeem_expires_at: redeemExpiresAt.toISOString() } : {}),
     };
 
-    const { error: updateError } = await supabase
-      .from("gifts")
-      .update(updatePayload)
-      .eq("id", gift_id);
-
-    if (updateError) {
-      console.error("[GIFT] Error actualizando estado del gift:", updateError);
-      throw new Error(updateError.message);
+    if (response !== "declined") {
+      const { error: updateError } = await supabase
+        .from("gifts")
+        .update(updatePayload)
+        .eq("id", gift_id)
+        .eq("receiver_id", receiver_id)
+        .eq("status", response);
+      if (updateError) throw updateError;
     }
 
     
@@ -417,12 +428,12 @@ class GiftsService {
       redeem_token: redeemToken,
       redeem_expires_at: redeemExpiresAt?.toISOString() ?? null,
       conversation_id: conversation?.id ?? null,
-      notification,
+      notification: giftNotification(notification),
     };
   }
 
   // Crea el pedido en nombre del remitente
-  async _createGiftOrder(gift) {
+  async #createGiftOrder(gift) {
     let venue_id = gift.venue_id ? Number(gift.venue_id) : null;
 
     if (!venue_id && gift.story_id) {
@@ -538,7 +549,8 @@ class GiftsService {
   }
 
   // Obsequios pendientes para el receiver
-  async getPendingGifts({ receiver_id }) {
+  async getPendingGifts({ actor, receiver_id }) {
+    receiver_id = assertGiftIdentity(actor, receiver_id);
     const nowIso = new Date().toISOString();
 
     const { data, error } = await supabase
@@ -584,7 +596,7 @@ class GiftsService {
     const profilesById = new Map((profiles || []).map(p => [p.user_id, p]));
 
     return data.map(g => ({
-      ...g,
+      ...pickGiftFields(g, pendingGiftFields),
       sender_nombre:
         profilesById.get(g.sender_id)?.display_name?.trim() ||
         usersById.get(g.sender_id)?.nombre?.trim() ||
@@ -596,11 +608,16 @@ class GiftsService {
     }));
   }
  
-  async getRedeemGiftByToken({ token }) {
+  async #getRedeemGift({ token, actor }) {
+    const venueId = giftAdminVenue(actor);
+    if (typeof token !== "string" || !/^[a-zA-Z0-9-]{1,128}$/.test(token)) {
+      throw new GiftError("Codigo invalido");
+    }
     const { data: gift, error } = await supabase
       .from("gifts")
       .select(`
         id,
+        venue_id,
         sender_id,
         receiver_id,
         product_nombre,
@@ -614,17 +631,18 @@ class GiftsService {
         responded_at
       `)
       .eq("redeem_token", token)
+      .eq("venue_id", venueId)
       .maybeSingle();
 
     if (error) throw new Error(error.message);
-    if (!gift) throw new Error("Código de canje no encontrado");
+    if (!gift) throw new GiftError("Obsequio no disponible", 404, "GIFT_NOT_AVAILABLE");
 
     const now = new Date();
     const expiresAt = gift.redeem_expires_at
       ? new Date(gift.redeem_expires_at)
       : null;
 
-    const isExpired = expiresAt ? expiresAt < now : true;
+    const isExpired = !expiresAt || !Number.isFinite(expiresAt.getTime()) || expiresAt <= now;
     const isRedeemed = Boolean(gift.redeemed_at);
     const isRedeemable =
       ["accepted_anon", "accepted_id", "accepted_chat"].includes(gift.status) &&
@@ -639,12 +657,21 @@ class GiftsService {
     };
   }
 
-  async redeemGiftByToken({ token, admin_id }) {
-    const gift = await this.getRedeemGiftByToken({ token });
+  async getRedeemGiftByToken({ token, actor }) {
+    const gift = await this.#getRedeemGift({ token, actor });
+    return { ...pickGiftFields(gift, staffGiftFields), isExpired: gift.isExpired,
+      isRedeemed: gift.isRedeemed, isRedeemable: false };
+  }
+
+  async redeemGiftByToken({ token, actor }) {
+    const admin_id = giftActor(actor);
+    const gift = await this.#getRedeemGift({ token, actor });
 
     if (!gift.isRedeemable) {
-      throw new Error("Este obsequio no está disponible para redimir");
+      throw new GiftError("Este obsequio no está disponible para redimir", 409, "GIFT_NOT_AVAILABLE");
     }
+
+    assertGiftPaymentsAvailable();
 
     const { data, error } = await supabase
       .from("gifts")
@@ -655,7 +682,10 @@ class GiftsService {
         redeemed_by: admin_id,
       })
       .eq("redeem_token", token)
+      .eq("venue_id", gift.venue_id)
+      .eq("status", gift.status)
       .is("redeemed_at", null)
+      .gt("redeem_expires_at", new Date().toISOString())
       .select()
       .single();
 
@@ -676,11 +706,11 @@ class GiftsService {
     });
 
     const io = getSocketInstance();
-    io?.to(`user:${data.receiver_id}`).emit("notification:new", notification);
+    io?.to(`user:${data.receiver_id}`).emit("notification:new", giftNotification(notification));
 
     return {
       ok: true,
-      gift: data,
+      gift: pickGiftFields(data, staffGiftFields),
     };
   }
 

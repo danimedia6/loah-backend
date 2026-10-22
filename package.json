@@ -8,7 +8,8 @@
     "dev": "node backend/src/server.js",
     "start": "node backend/src/server.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --passWithNoTests",
-    "test:usuarios": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --no-cache --runTestsByPath backend/tests/usuarios.security.test.js"
+    "test:usuarios": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --no-cache --runTestsByPath backend/tests/usuarios.security.test.js",
+    "test:gifts": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --no-cache --runTestsByPath backend/tests/gifts.security.test.js"
   },
   "keywords": [],
   "author": "",

@@ -12,15 +12,15 @@ import {
 
 const router = Router();
 
-router.get("/redeem/:token", getRedeemGift);
+router.use(authMiddleware);
+router.get("/redeem/:token", requireRole("admin"), getRedeemGift);
 router.post(
   "/redeem/:token",
-  authMiddleware,
   requireRole("admin"),
   redeemGift
 );
 
-router.post("/send", authMiddleware, sendGift);
+router.post("/send", sendGift);
 router.post("/:id/respond", respondGift);
 router.get("/pending", getPendingGifts);
 router.post("/:id/reaction", toggleReaction);
