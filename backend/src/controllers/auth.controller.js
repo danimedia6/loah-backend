@@ -97,7 +97,7 @@ export const getMe = async (req, res) => {
   try {
     // req.user is populated by authMiddleware
     const userId = req.user.id
-    const usuario = await usuarioService.getUsuarioById(userId)
+    const usuario = await usuarioService.getUsuarioById(userId, req.user)
     res.json(usuario)
   } catch (error) {
     console.error('Error en getMe:', error)

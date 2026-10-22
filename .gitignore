@@ -24,6 +24,7 @@ Thumbs.db
 coverage/
 *.test.js
 *.spec.js
+!backend/tests/usuarios.security.test.js
 
 # 🧰 Compilaciones o builds (si llegas a usar TypeScript)
 dist/

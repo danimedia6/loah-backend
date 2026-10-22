@@ -1,5 +1,6 @@
 import usuarioRepository from '../repositories/usuario.repository.js'
 import bcrypt from 'bcryptjs'
+import { toUsuarioResponse } from '../utils/usuario-response.js'
 
 /**
  * Servicio para la lógica de negocio de Autenticación.
@@ -44,13 +45,14 @@ class AuthService {
     const fecha_registro = new Date().toISOString()
 
     // Por defecto rol 'cliente'
-    return await usuarioRepository.create({
+    const user = await usuarioRepository.create({
       nombre,
       correo,
       contrasena_hash,
       rol: 'cliente',
       fecha_registro
     })
+    return toUsuarioResponse(user)
   }
 
   /**
@@ -72,8 +74,7 @@ class AuthService {
     }
 
     // Eliminar hash antes de retornar
-    const { contrasena_hash, ...userWithoutHash } = usuario
-    return userWithoutHash
+    return toUsuarioResponse(usuario)
   }
 }
 

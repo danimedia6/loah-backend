@@ -7,14 +7,16 @@ import {
   getPendingReportsCount
 } from "../controllers/admin.controller.js";
 import { authMiddleware, requireRole } from '../middlewares/auth.middleware.js'
+import { validate } from '../middlewares/validate.middleware.js'
+import { createAdminSchema, changeUserRoleSchema } from '../schemas/usuario.schema.js'
 
 const router = express.Router()
 
 // Admin-only: create another admin (requires an authenticated admin)
-router.post('/create', authMiddleware, requireRole('admin'), createAdmin)
+router.post('/create', authMiddleware, requireRole('admin'), validate(createAdminSchema), createAdmin)
 
 // Admin-only: change user's role
-router.put('/users/:id/role', authMiddleware, requireRole('admin'), changeUserRole)
+router.put('/users/:id/role', authMiddleware, requireRole('admin'), validate(changeUserRoleSchema), changeUserRole)
 
 router.get('/reports', authMiddleware, requireRole('admin'), listReports)
 

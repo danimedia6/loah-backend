@@ -111,12 +111,49 @@ npm test
 ### Usuarios (`/api/usuarios`)
 | Método | Endpoint | Descripción | Auth | Body |
 | :--- | :--- | :--- | :--- | :--- |
-| `GET` | `/` | Listar todos los usuarios | Token | - |
-| `GET` | `/:id` | Obtener detalle de usuario | Token | - |
-| `POST` | `/` | Crear usuario (Admin) | Público* | `{ nombre, correo, contrasena, rol }` |
-| `PUT` | `/:id` | Actualizar usuario | Token | `{ nombre, correo, rol }` |
-| `DELETE` | `/:id` | Eliminar usuario | Token | - |
-> (*) Nota: El endpoint de creación de usuarios sigue público para facilitar el registro inicial o admin, pero debería protegerse en producción.
+| `GET` | `/` | Listar todos los usuarios | Admin | - |
+| `GET` | `/:id` | Obtener detalle de usuario | Propietario o admin | - |
+| `POST` | `/` | Registrar cliente | Público | `{ nombre, correo, contrasena, rol?: "cliente" }` |
+| `PUT` | `/:id` | Actualizar campos permitidos | Propietario o admin | `{ nombre?, correo?, contrasena?, currentPassword? }` |
+| `DELETE` | `/:id` | Eliminación temporalmente no disponible (409) | Propietario o admin | - |
+> Los campos privilegiados se rechazan. Para cambiar la contraseña propia se exige `currentPassword`; un admin puede restablecer la de otra cuenta. Los cambios de rol solo se permiten en la ruta administrativa dedicada. Las respuestas de usuario usan una lista explícita de campos y no incluyen credenciales.
+
+El DELETE mantiene autenticación y autorización: sin token devuelve 401; un cliente
+que solicita eliminar otra cuenta recibe 403. Para el propietario o un admin
+devuelve 409 con `{ error, code: "ACCOUNT_DELETION_UNAVAILABLE" }`, sin consultar
+la existencia de la cuenta ni ejecutar un borrado. No desactiva la cuenta ni
+simula éxito. Las solicitudes legítimas deben canalizarse a soporte mientras se
+implementa desactivación, resolución de obligaciones y eliminación controlada.
+
+El único consumidor de `usuarioService.deleteUsuario` es el controlador de
+usuarios. El método destructivo `usuarioRepository.delete` queda sin consumidores
+en el backend; se conserva como operación de bajo nivel, fuera del flujo HTTP.
+La creación interna de usuarios es un método privado `#createUsuario`; solo el
+registro validado y la creación administrativa autorizada pueden invocarlo.
+
+#### Compatibilidad pendiente: panel heredado de empleados
+
+`Account.jsx` carga pedidos y consulta `/api/usuarios/:id` para enriquecerlos. Usa
+el nombre para mostrar y buscar pedidos; el correo se muestra solo si existe y
+no es necesario para ese flujo. `pedidoRepository.findAll/findById` devuelve
+`id_cliente`, pero no el nombre; el servicio solo enriquece productos. No se
+restaura el acceso de empleados a cuentas ajenas.
+
+Tarea de compatibilidad pendiente, fuera del Bloque 0.1:
+
+- Dependencia: definir roles operativos válidos y autorizar cada pedido y listado
+  contra el establecimiento asignado al actor autenticado. Las consultas actuales
+  de pedidos no aplican ese aislamiento; primero debe verificarse su relación real
+  con el venue. No confiar en un `venue_id` arbitrario del cliente.
+- Contrato mínimo propuesto: añadir `cliente: { nombre }` a cada pedido autorizado,
+  preservando los campos actuales y sin correo, teléfono ni un nuevo endpoint
+  general de usuarios. No implementado en este paquete.
+- Criterio de aceptación: el empleado autorizado puede mostrar y buscar por nombre
+  únicamente pedidos de su venue; un actor ajeno no obtiene pedidos ni identidades;
+  `/api/usuarios/:id` sigue devolviendo 403 para cuentas ajenas de empleados.
+- Seguimiento frontend: consumir el nombre del pedido y retirar el enriquecimiento
+  mediante usuarios. Hasta entonces pueden seguir apareciendo 403 capturados y el
+  texto genérico "Cliente". No se modificó frontend ni pedidos en este paquete.
 
 ### Admin (`/api/admin`)
 | Método | Endpoint | Descripción | Auth | Body |

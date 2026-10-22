@@ -21,11 +21,17 @@ export const createUsuarioSchema = Joi.object({
     'string.min': 'La contraseña debe tener al menos 6 caracteres',
     'any.required': 'La contraseña es obligatoria'
   }),
-  rol: Joi.string().valid('admin', 'mesero', 'cocina', 'cliente').optional().messages({
+  rol: Joi.string().valid('cliente').optional().messages({
     'string.base': 'El rol debe ser un texto',
-    'any.only': 'El rol debe ser uno de: admin, mesero, cocina, cliente'
+    'any.only': 'El registro público solo permite el rol cliente'
   })
-})
+}).unknown(false)
+
+export const createAdminSchema = createUsuarioSchema.fork('rol', (schema) => schema.forbidden())
+
+export const changeUserRoleSchema = Joi.object({
+  rol: Joi.string().valid('admin', 'cliente').required(),
+}).unknown(false)
 
 /**
  * Esquema de validación para la actualización de usuarios.
@@ -44,12 +50,8 @@ export const updateUsuarioSchema = Joi.object({
     'string.base': 'La contraseña debe ser un texto',
     'string.min': 'La contraseña debe tener al menos 6 caracteres'
   }),
-  rol: Joi.string().valid('admin', 'mesero', 'cocina', 'cliente').optional().messages({
-    'string.base': 'El rol debe ser un texto',
-    'any.only': 'El rol debe ser uno de: admin, mesero, cocina, cliente'
-  }),
-  fecha_registro: Joi.date().iso().optional()
-})
+  currentPassword: Joi.string().min(1).optional(),
+}).min(1).with('currentPassword', 'contrasena').unknown(false)
 
 /**
  * Esquema de validación para login.

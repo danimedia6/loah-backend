@@ -6,7 +6,7 @@ import {
   updateUsuario,
   deleteUsuario
 } from '../controllers/usuarios.controller.js'
-import { authMiddleware } from '../middlewares/auth.middleware.js'
+import { authMiddleware, requireRole } from '../middlewares/auth.middleware.js'
 import { validate } from '../middlewares/validate.middleware.js'
 import { createUsuarioSchema, updateUsuarioSchema } from '../schemas/usuario.schema.js'
 
@@ -15,9 +15,9 @@ const router = express.Router()
 /**
  * @route GET /api/usuarios
  * @desc Obtener todos los usuarios
- * @access Private (Authenticated)
+ * @access Private (Admin)
  */
-router.get('/', authMiddleware, getUsuarios)
+router.get('/', authMiddleware, requireRole('admin'), getUsuarios)
 
 /**
  * @route GET /api/usuarios/:id
@@ -28,8 +28,8 @@ router.get('/:id', authMiddleware, getUsuarioById)
 
 /**
  * @route POST /api/usuarios
- * @desc Crear un nuevo usuario (Admin/Signup)
- * @access Public (Should be protected for Admin creation)
+ * @desc Registrar un nuevo usuario cliente
+ * @access Public
  */
 router.post('/', validate(createUsuarioSchema), createUsuario)
 

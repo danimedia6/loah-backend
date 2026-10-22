@@ -17,15 +17,15 @@ export const createAdmin = async (req, res) => {
       return res.status(400).json({ error: 'nombre, correo y contrasena son requeridos' })
     }
 
-    const newUser = await usuarioService.createUsuario({
+    const newUser = await usuarioService.createAdmin({
       nombre,
       correo,
       contrasena,
-      rol: 'admin'
-    })
+    }, req.user)
 
     return res.status(201).json({ id_usuario: newUser.id_usuario })
   } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message })
     console.error('createAdmin error:', err)
     if (err.message === 'El correo ya está registrado') {
       return res.status(409).json({ error: err.message })
@@ -51,10 +51,11 @@ export const changeUserRole = async (req, res) => {
     const allowed = ['admin', 'cliente']
     if (!allowed.includes(rol)) return res.status(400).json({ error: 'rol inválido' })
 
-    const updatedUser = await usuarioService.updateUsuario(id, { rol })
+    const updatedUser = await usuarioService.changeUserRole(id, { rol }, req.user)
 
     return res.status(200).json({ user: updatedUser })
   } catch (err) {
+    if (err.statusCode) return res.status(err.statusCode).json({ error: err.message })
     console.error('changeUserRole error:', err)
     if (err.message === 'Usuario no encontrado') {
       return res.status(404).json({ error: err.message })
