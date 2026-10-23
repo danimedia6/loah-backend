@@ -13,7 +13,7 @@ export const getEventos = async (req, res) => {
     const result = await auditoriaService.getEventos({ page, limit, id_pedido, from, to })
     res.status(200).json(result)
   } catch (err) {
-    console.error('Error obteniendo auditoría:', err)
+    console.error('Error obteniendo auditoría:')
     res.status(500).json({ error: 'Error interno' })
   }
 }

@@ -38,7 +38,7 @@ export async function generatePdfBuffer (url, size = 300) {
     doc.image(pngBuffer, doc.page.margins.left + x, y, { width: size })
   } catch (err) {
     // If image insertion fails, embed as raw bytes fallback (shouldn't happen)
-    console.error('Error embedding QR in PDF:', err)
+    console.error('Error embedding QR in PDF:')
   }
 
   doc.moveDown(2)
@@ -111,7 +111,7 @@ export async function generateAndUploadQr(mesaId, format, venueId) {
       .upload(path, buffer, { upsert: true, contentType })
 
     if (uploadErr) {
-      console.error('Error subiendo QR a storage:', uploadErr.message)
+      console.error('Error subiendo QR a storage:')
     } else {
       const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(path)
       publicUrl = publicData?.publicUrl

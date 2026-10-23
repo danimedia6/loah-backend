@@ -185,7 +185,7 @@ class ProductoService {
 
     // Debug log to help diagnose why validation fails
     if (!validOrder) {
-      console.warn(`[rateProduct] Validation failed for user ${userId} product ${productId}. Found ${paidOrders.length} paid orders.`)
+      console.warn("[producto.service.js] warn")
       throw new Error('Debes comprar y pagar el producto para calificarlo')
     }
 
@@ -254,7 +254,7 @@ class ProductoService {
       const path = publicUrl.substring(idx + marker.length)
       await supabase.storage.from(bucket).remove([path])
     } catch (e) {
-      console.warn('Error eliminando imagen:', e)
+      console.warn('Error eliminando imagen:')
     }
   }
 }

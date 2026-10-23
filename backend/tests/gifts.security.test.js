@@ -4,7 +4,9 @@ import request from 'supertest';
 import jwt from 'jsonwebtoken';
 
 const originalSecret = process.env.JWT_SECRET;
+const originalDotenvPath = process.env.DOTENV_CONFIG_PATH;
 process.env.JWT_SECRET = 'isolated-gifts-security-test-key';
+process.env.DOTENV_CONFIG_PATH = 'backend/tests/no-environment-file';
 let tables;
 let operations;
 let failure;
@@ -21,9 +23,10 @@ const supabase = {
     if (!tables[table]) throw new Error(`Unexpected test table: ${table}`);
     let operation = 'select';
     let payload;
+    let selected;
     const filters = [];
     const execute = () => {
-      operations.push({ table, operation, payload, filters: [...filters] });
+      operations.push({ table, operation, payload, selected, filters: [...filters] });
       if (failure?.table === table && failure.operation === operation) {
         return { data: null, error: { message: 'db-private-token-secret', ...failure.error } };
       }
@@ -43,7 +46,7 @@ const supabase = {
       return { ...result, data: result.data?.[0] ?? null };
     };
     const query = {
-      select: () => query,
+      select: (fields) => { selected = fields; return query; },
       order: () => query,
       limit: () => query,
       eq: (key, value) => { filters.push((row) => String(row[key]) === String(value)); return query; },
@@ -97,6 +100,10 @@ const http = (method, path, actor, body) => {
   return body === undefined ? req : req.send(body);
 };
 const mutations = () => operations.filter((op) => op.operation !== 'select');
+const expectOnlyAuthReads = () => {
+  expect(operations.every((op) => op.table === 'usuarios' && op.operation === 'select' &&
+    op.selected === 'id_usuario, rol, venue_id, is_suspended')).toBe(true);
+};
 const expectHold = (res) => {
   expect(res.status).toBe(409);
   expect(res.body.code).toBe('GIFTS_PAYMENTS_UNAVAILABLE');
@@ -116,7 +123,8 @@ beforeEach(() => {
         product_nombre: 'Bebida', product_precio: 12000, redeem_token: token,
         redeem_expires_at: future, redeemed_at: null, internal_secret: 'db-private-token-secret' },
     ],
-    usuarios: [8, 44, 55, 99].map((id) => ({ id_usuario: id, nombre: `User ${id}`, is_suspended: false })),
+    usuarios: [8, 44, 55, 77, 99].map((id) => ({ id_usuario: id, nombre: `User ${id}`, is_suspended: false,
+      rol: id === 99 ? 'admin' : id === 77 ? 'mesero' : 'cliente', venue_id: id === 99 || id === 77 ? 1 : null })),
     social_profiles: [{ user_id: 8, display_name: 'Sender', avatar_url: 'https://example.test/avatar.png' },
       { user_id: 44, allow_gifts: true, allow_chat: true }],
     venues: [{ id: 1 }],
@@ -143,6 +151,8 @@ afterEach(() => {
   jest.restoreAllMocks();
 });
 afterAll(() => {
+  if (originalDotenvPath === undefined) delete process.env.DOTENV_CONFIG_PATH;
+  else process.env.DOTENV_CONFIG_PATH = originalDotenvPath;
   if (originalSecret === undefined) delete process.env.JWT_SECRET;
   else process.env.JWT_SECRET = originalSecret;
 });
@@ -166,18 +176,18 @@ describe('mandatory JWT and actor identity', () => {
   test('send rejects a forged sender', async () => {
     const res = await http('post', '/send', sender, { ...sendBody, sender_id: 55 });
     expect(res.status).toBe(403);
-    expect(supabase.from).not.toHaveBeenCalled();
+    expectOnlyAuthReads();
   });
   test('pending rejects someone else even for an admin', async () => {
     for (const actor of [sender, admin]) {
       expect((await http('get', '/pending?receiver_id=44', actor)).status).toBe(403);
     }
-    expect(supabase.from).not.toHaveBeenCalled();
+    expectOnlyAuthReads();
   });
   test('response rejects forged body identity before querying', async () => {
     const res = await http('post', '/100/respond', sender, { receiver_id: 44, response: 'declined' });
     expect(res.status).toBe(403);
-    expect(supabase.from).not.toHaveBeenCalled();
+    expectOnlyAuthReads();
   });
   test.each([sender, thirdParty, admin])('only the stored receiver can respond (%j)', async (actor) => {
     const res = await http('post', '/100/respond', actor, { response: 'declined' });
@@ -218,7 +228,7 @@ describe('private reads and strict payloads', () => {
   test.each(['status', 'redeem_token', 'redeemed_by', 'actor', 'payment_status'])('send rejects unexpected %s', async (key) => {
     const res = await http('post', '/send', sender, { ...sendBody, [key]: 'forged' });
     expect(res.status).toBe(400);
-    expect(supabase.from).not.toHaveBeenCalled();
+    expectOnlyAuthReads();
   });
   test('response rejects injected privileged fields and invalid message', async () => {
     for (const body of [{ response: 'declined', redeem_token: 'forged' }, { response: 'declined', message: {} },
@@ -240,7 +250,7 @@ describe('private reads and strict payloads', () => {
   test.each(['/100/reaction', '/100/reactions'])('unused broken legacy alias %s fails closed', async (path) => {
     const res = await http(path.endsWith('reactions') ? 'get' : 'post', path, sender, {});
     expect(res.status).toBe(410);
-    expect(supabase.from).not.toHaveBeenCalled();
+    expectOnlyAuthReads();
   });
 });
 
@@ -269,7 +279,7 @@ describe('eligibility is preserved before the financial hold', () => {
   });
   test.each([8, 44])('suspended user %s is ineligible', async (id) => {
     tables.usuarios.find((u) => u.id_usuario === id).is_suspended = true;
-    expect((await http('post', '/send', sender, sendBody)).status).toBe(400);
+    expect((await http('post', '/send', sender, sendBody)).status).toBe(id === 8 ? 403 : 400);
     expect(mutations()).toEqual([]);
   });
   test('nonexistent receiver is ineligible', async () => {
@@ -381,10 +391,11 @@ describe('venue-scoped token access and redemption containment', () => {
     for (const actor of [sender, receiver, thirdParty, { id: 77, rol: 'mesero', venue_id: 1 }]) {
       expect((await http(method, `/redeem/${token}`, actor, method === 'post' ? {} : undefined)).status).toBe(403);
     }
-    expect(supabase.from).not.toHaveBeenCalled();
+    expectOnlyAuthReads();
   });
   test.each(['get', 'post'])('%s denies another venue admin without revealing gift details', async (method) => {
     const actor = { ...admin, venue_id: 2 };
+    tables.usuarios.find((u) => u.id_usuario === admin.id).venue_id = 2;
     const res = await http(method, `/redeem/${token}`, actor, method === 'post' ? {} : undefined);
     const missing = await http(method, '/redeem/does-not-exist', actor, method === 'post' ? {} : undefined);
     expect(res.status).toBe(404);
@@ -393,9 +404,10 @@ describe('venue-scoped token access and redemption containment', () => {
     expect(JSON.stringify(res.body)).not.toContain(token);
   });
   test('admin without assigned venue has no global bypass', async () => {
+    tables.usuarios.find((u) => u.id_usuario === admin.id).venue_id = null;
     const res = await http('get', `/redeem/${token}`, { id: 99, rol: 'admin' });
     expect(res.status).toBe(403);
-    expect(supabase.from).not.toHaveBeenCalled();
+    expectOnlyAuthReads();
   });
   test('own venue admin can inspect the QR without participant IDs or extra fields', async () => {
     const res = await http('get', `/redeem/${token}`, admin);

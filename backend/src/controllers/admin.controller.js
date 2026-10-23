@@ -26,7 +26,7 @@ export const createAdmin = async (req, res) => {
     return res.status(201).json({ id_usuario: newUser.id_usuario })
   } catch (err) {
     if (err.statusCode) return res.status(err.statusCode).json({ error: err.message })
-    console.error('createAdmin error:', err)
+    console.error('createAdmin error:')
     if (err.message === 'El correo ya está registrado') {
       return res.status(409).json({ error: err.message })
     }
@@ -56,7 +56,7 @@ export const changeUserRole = async (req, res) => {
     return res.status(200).json({ user: updatedUser })
   } catch (err) {
     if (err.statusCode) return res.status(err.statusCode).json({ error: err.message })
-    console.error('changeUserRole error:', err)
+    console.error('changeUserRole error:')
     if (err.message === 'Usuario no encontrado') {
       return res.status(404).json({ error: err.message })
     }
@@ -75,7 +75,7 @@ export const listReports = async (req, res) => {
       data: reports,
     });
   } catch (err) {
-    console.error("listReports error:", err);
+    console.error("listReports error:");
     return res.status(500).json({
       success: false,
       message: "Error interno",
@@ -101,7 +101,7 @@ export const updateReportStatus = async (req, res) => {
       data: report,
     });
   } catch (err) {
-    console.error("updateReportStatus error:", err);
+    console.error("updateReportStatus error:");
     return res.status(400).json({
       success: false,
       message: err.message,

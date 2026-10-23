@@ -58,6 +58,6 @@ export async function emitPresenceUpdateForExpiredSessions(
 
 process.on(PRESENCE_EXPIRED_EVENT, (sessions) => {
   void emitPresenceUpdateForExpiredSessions(sessions).catch((error) => {
-    console.error('❌ Error emitiendo presence:update por expiración:', error.message)
+    console.error('❌ Error emitiendo presence:update por expiración:')
   })
 })

@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken'
+import { authenticateAccessToken } from '../services/auth-context.service.js'
 
 /**
  * Middleware para verificar el token JWT.
@@ -6,40 +6,23 @@ import jwt from 'jsonwebtoken'
  * @param {import('express').Response} res - Objeto de respuesta de Express.
  * @param {import('express').NextFunction} next - Función para pasar al siguiente middleware.
  */
-export const authMiddleware = (req, res, next) => {
+export const authMiddleware = async (req, res, next) => {
   try {
     const auth = req.headers.authorization || ''
     const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
     if (!token) return res.status(401).json({ error: 'No autorizado' })
 
-    const payload = jwt.verify(token, process.env.JWT_SECRET || 'secret')
-    // small debug: attach and log basic user info to help debug role/permissions
-    req.user = payload
-    try {
-      console.debug('[auth] token payload:', {
-        id: payload.id || payload.user_id || null,
-        rol: payload.rol || payload.role || null,
-        venue_id: payload.venue_id || null,
-      })
-    } catch (e) {}
+    req.user = await authenticateAccessToken(token)
     next()
   } catch (err) {
-    return res.status(401).json({ error: 'Token inválido o expirado' })
+    return res.status(err.statusCode || 401).json({ error: err.message, code: err.code || 'AUTH_REQUIRED' })
   }
 }
 
 export const optionalAuthMiddleware = (req, res, next) => {
-  try {
-    const auth = req.headers.authorization || ''
-    const token = auth.startsWith('Bearer ') ? auth.slice(7) : null
-
-    if (!token) return next()
-
-    req.user = jwt.verify(token, process.env.JWT_SECRET || 'secret')
-    return next()
-  } catch (err) {
-    return next()
-  }
+  if (!req.headers.authorization) return next()
+  // Invalid or suspended identities must not silently become anonymous viewers.
+  return authMiddleware(req, res, next)
 }
 
 /**
@@ -50,7 +33,6 @@ export const optionalAuthMiddleware = (req, res, next) => {
 export const requireRole = (role) => (req, res, next) => {
   if (!req.user) return res.status(401).json({ error: 'No autenticado' })
   if (req.user.rol !== role) {
-    try { console.warn('[auth] requireRole failed', { expected: role, actual: req.user.rol }) } catch (e) {}
     return res.status(403).json({ error: 'No autorizado' })
   }
   next()
@@ -64,7 +46,6 @@ export const requireRole = (role) => (req, res, next) => {
 export const requireAnyRole = (...roles) => (req, res, next) => {
   if (!req.user) return res.status(401).json({ error: 'No autenticado' })
   if (!roles.includes(req.user.rol)) {
-    try { console.warn('[auth] requireAnyRole failed', { expectedAny: roles, actual: req.user.rol }) } catch (e) {}
     return res.status(403).json({ error: 'No autorizado' })
   }
   next()

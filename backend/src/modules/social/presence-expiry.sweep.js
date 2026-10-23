@@ -57,7 +57,7 @@ export function startPresenceExpirySweep(
 
   const runSweep = () => {
     void sweepExpiredPresenceSessions({ io }).catch((error) => {
-      console.error('❌ Error en sweep de expiración de presencia:', error.message)
+      console.error('❌ Error en sweep de expiración de presencia:')
     })
   }
 

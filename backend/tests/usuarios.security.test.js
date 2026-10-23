@@ -5,11 +5,14 @@ import jwt from 'jsonwebtoken'
 import bcrypt from 'bcryptjs'
 
 const originalSecret = process.env.JWT_SECRET
+const originalDotenvPath = process.env.DOTENV_CONFIG_PATH
 process.env.JWT_SECRET = 'loah-isolated-users-security-test-key'
+process.env.DOTENV_CONFIG_PATH = 'backend/tests/no-environment-file'
 const password = 'Existing!123'
 const passwordHash = bcrypt.hashSync(password, 10)
 let users
 let nextId
+let operations
 
 // Return extra columns deliberately: response allowlists must still protect secrets.
 const supabase = {
@@ -17,8 +20,10 @@ const supabase = {
     if (table !== 'usuarios') throw new Error(`Unexpected test table: ${table}`)
     let operation = 'select'
     let payload
+    let selected
     const filters = []
     const execute = () => {
+      operations.push({ operation, selected, filters: [...filters] })
       let rows = [...users.values()].filter((user) =>
         filters.every(([key, value]) => String(user[key]) === String(value))
       )
@@ -36,7 +41,7 @@ const supabase = {
       return { data: rows.map((user) => ({ ...user })), error: null }
     }
     const query = {
-      select: () => query,
+      select: (fields) => { selected = fields; return query },
       order: () => query,
       eq: (key, value) => { filters.push([key, value]); return query },
       insert: (value) => { operation = 'insert'; payload = value; return query },
@@ -56,6 +61,7 @@ const { default: usuariosRoutes } = await import('../src/routes/usuarios.routes.
 const { default: adminRoutes } = await import('../src/routes/admin.routes.js')
 const { default: authRoutes } = await import('../src/routes/auth.routes.js')
 const { default: usuarioService } = await import('../src/services/usuario.service.js')
+const { default: authService } = await import('../src/services/auth.service.js')
 const { default: usuarioRepository } = await import('../src/repositories/usuario.repository.js')
 const app = express()
 app.use(express.json())
@@ -69,6 +75,10 @@ const bearer = (claims = actor, options = {}) =>
   `Bearer ${jwt.sign(claims, process.env.JWT_SECRET, { expiresIn: '1h', ...options })}`
 const registration = { nombre: 'New User', correo: 'new@example.com', contrasena: 'NewUser!123' }
 const publicFields = ['id_usuario', 'nombre', 'correo', 'rol', 'venue_id', 'fecha_registro'].sort()
+const expectOnlyAuthReads = () => {
+  expect(operations.every((op) => op.operation === 'select' &&
+    op.selected === 'id_usuario, rol, venue_id, is_suspended')).toBe(true)
+}
 const expectSafeUser = (user) => {
   expect(Object.keys(user).sort()).toEqual(publicFields)
   expect(JSON.stringify(user)).not.toContain(passwordHash)
@@ -85,6 +95,7 @@ beforeEach(() => {
     internal_secret: 'db-secret', is_suspended: false,
   }]))
   nextId = 100
+  operations = []
   supabase.from.mockClear()
   jest.spyOn(usuarioRepository, 'delete')
   jest.spyOn(console, 'debug').mockImplementation(() => {})
@@ -100,6 +111,8 @@ afterEach(() => {
 })
 
 afterAll(() => {
+  if (originalDotenvPath === undefined) delete process.env.DOTENV_CONFIG_PATH
+  else process.env.DOTENV_CONFIG_PATH = originalDotenvPath
   if (originalSecret === undefined) delete process.env.JWT_SECRET
   else process.env.JWT_SECRET = originalSecret
 })
@@ -117,6 +130,7 @@ describe('public registration and authentication', () => {
     expect(response.status).toBe(201)
     expect(response.body.rol).toBe('cliente')
     expect(users.get(response.body.id_usuario).rol).toBe('cliente')
+    expect(users.get(response.body.id_usuario).is_suspended).toBe(false)
     expect(await bcrypt.compare(registration.contrasena, users.get(response.body.id_usuario).contrasena_hash)).toBe(true)
     expectSafeUser(response.body)
   })
@@ -126,6 +140,7 @@ describe('public registration and authentication', () => {
     expect(signup.status).toBe(201)
     expect(Object.keys(signup.body)).toEqual(['id_usuario'])
     expect(users.get(signup.body.id_usuario).rol).toBe('cliente')
+    expect(users.get(signup.body.id_usuario).is_suspended).toBe(false)
     const login = await request(app).post('/api/auth/login').send({ correo: registration.correo, contrasena: registration.contrasena })
     expect(login.status).toBe(200)
     expect(jwt.verify(login.body.token, process.env.JWT_SECRET).id).toBe(signup.body.id_usuario)
@@ -140,6 +155,49 @@ describe('public registration and authentication', () => {
     const response = await request(app).post('/api/auth/login').send({ correo: 'user8@example.com', contrasena: 'wrong' })
     expect(response.status).toBe(401)
     expect(Object.keys(response.body)).toEqual(['error'])
+  })
+
+  test.each([
+    ['/api/usuarios', false], ['/api/usuarios', true],
+    ['/api/auth/signup', false], ['/api/auth/signup', true],
+  ])('%s rejects client suspension state %s without creating accounts', async (url, is_suspended) => {
+    const response = await request(app).post(url).send({ ...registration, is_suspended })
+    expect(response.status).toBe(400)
+    expect(supabase.from).not.toHaveBeenCalled()
+    expect(users.size).toBe(3)
+  })
+
+  test('both public creation services set server-controlled false without a database default', async () => {
+    const user = await usuarioService.createUsuario(registration)
+    const other = await authService.signup({ ...registration, correo: 'other@example.test', is_suspended: true })
+    expect(users.get(user.id_usuario).is_suspended).toBe(false)
+    expect(users.get(other.id_usuario).is_suspended).toBe(false)
+    await expect(usuarioService.createUsuario({ ...registration, is_suspended: false }))
+      .rejects.toMatchObject({ statusCode: 400 })
+  })
+
+  test.each([true, null, undefined])('indeterminate or suspended accounts (%s) cannot login through either service', async (is_suspended) => {
+    users.get(8).is_suspended = is_suspended
+    await expect(authService.login('user8@example.com', password)).rejects.toThrow('Credenciales')
+    await expect(usuarioService.authenticateUsuario('user8@example.com', password)).rejects.toThrow('Credenciales')
+    const response = await request(app).post('/api/auth/login')
+      .send({ correo: 'user8@example.com', contrasena: password })
+    expect(response.status).toBe(401)
+    expect(response.body).not.toHaveProperty('token')
+    expect(users.get(8).is_suspended).toBe(is_suspended)
+  })
+
+  test.each(['missing', 'storage-error'])('login denies %s without credentials or internal details', async (kind) => {
+    if (kind === 'storage-error') {
+      jest.spyOn(usuarioRepository, 'findByEmail').mockRejectedValue(new Error('QAKEY42-storage-details'))
+    }
+    const correo = 'unavailable-account@example.com'
+    await expect(authService.login(correo, password)).rejects.toThrow()
+    await expect(usuarioService.authenticateUsuario(correo, password)).rejects.toThrow()
+    const response = await request(app).post('/api/auth/login').send({ correo, contrasena: password })
+    expect(response.status).toBe(401)
+    expect(response.body).not.toHaveProperty('token')
+    expect(JSON.stringify(response.body)).not.toMatch(/QAKEY42|storage-details/)
   })
 })
 
@@ -164,14 +222,14 @@ describe('account ownership and allowed fields', () => {
   test.each(['get', 'put', 'delete'])('a client cannot %s another account', async (method) => {
     const response = await request(app)[method]('/api/usuarios/44').set('Authorization', bearer()).send({ nombre: 'Hacked' })
     expect(response.status).toBe(403)
-    expect(supabase.from).not.toHaveBeenCalled()
+    expectOnlyAuthReads()
     expect(users.get(44).nombre).toBe('Bruno')
   })
 
   test('a client cannot list private accounts', async () => {
     const response = await request(app).get('/api/usuarios').set('Authorization', bearer())
     expect(response.status).toBe(403)
-    expect(supabase.from).not.toHaveBeenCalled()
+    expectOnlyAuthReads()
   })
 
   test.each([
@@ -181,7 +239,7 @@ describe('account ownership and allowed fields', () => {
   ])('self-service rejects privileged or spoofed fields: %j', async (payload) => {
     const response = await request(app).put('/api/usuarios/8').set('Authorization', bearer()).send({ nombre: 'Updated', ...payload })
     expect(response.status).toBe(400)
-    expect(supabase.from).not.toHaveBeenCalled()
+    expectOnlyAuthReads()
     expect(users.get(8).rol).toBe('cliente')
   })
 
@@ -203,7 +261,7 @@ describe('account ownership and allowed fields', () => {
       code: 'ACCOUNT_DELETION_UNAVAILABLE',
       error: expect.stringContaining('soporte'),
     })
-    expect(supabase.from).not.toHaveBeenCalled()
+    expectOnlyAuthReads()
     expect(users.has(8)).toBe(true)
     expect(users.has(44)).toBe(true)
   })
@@ -215,7 +273,7 @@ describe('account ownership and allowed fields', () => {
       code: 'ACCOUNT_DELETION_UNAVAILABLE',
       error: expect.stringContaining('soporte'),
     })
-    expect(supabase.from).not.toHaveBeenCalled()
+    expectOnlyAuthReads()
     expect(users.size).toBe(3)
   })
 
@@ -237,7 +295,7 @@ describe('account ownership and allowed fields', () => {
   test.each(['not-an-id', '-1', '1.5'])('invalid target %s returns 400', async (id) => {
     const response = await request(app).get(`/api/usuarios/${id}`).set('Authorization', bearer())
     expect(response.status).toBe(400)
-    expect(supabase.from).not.toHaveBeenCalled()
+    expectOnlyAuthReads()
   })
 
   test('missing account and duplicate email have appropriate status codes', async () => {
@@ -248,7 +306,7 @@ describe('account ownership and allowed fields', () => {
   })
 
   test('unexpected repository errors are not returned to clients', async () => {
-    supabase.from.mockImplementationOnce(() => { throw new Error('database secret details') })
+    jest.spyOn(usuarioRepository, 'findById').mockRejectedValueOnce(new Error('database secret details'))
     const response = await request(app).get('/api/usuarios/8').set('Authorization', bearer())
     expect(response.status).toBe(500)
     expect(JSON.stringify(response.body)).not.toContain('secret')
@@ -262,7 +320,7 @@ describe('explicit administration and service-level defenses', () => {
   ])('clients cannot use %s %s', async (method, url, payload) => {
     const response = await request(app)[method](url).set('Authorization', bearer()).send(payload)
     expect(response.status).toBe(403)
-    expect(supabase.from).not.toHaveBeenCalled()
+    expectOnlyAuthReads()
   })
 
   test('admins can list and read accounts without exposing secrets', async () => {
@@ -280,6 +338,7 @@ describe('explicit administration and service-level defenses', () => {
     expect(response.status).toBe(201)
     expect(Object.keys(response.body)).toEqual(['id_usuario'])
     expect(users.get(response.body.id_usuario).rol).toBe('admin')
+    expect(users.get(response.body.id_usuario).is_suspended).toBe(false)
   })
 
   test('role changes are limited to the dedicated admin route', async () => {

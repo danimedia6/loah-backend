@@ -55,7 +55,7 @@ export async function getPeopleWithStories(req, res) {
     const result = await storiesService.getPeopleWithStories({ venue_id, viewer_user_id });
     return res.json(result);
   } catch (error) {
-    console.error("Error getPeopleWithStories:", error);
+    console.error("Error getPeopleWithStories:");
     return res.status(500).json({ error: "Error interno del servidor" });
   }
 }
@@ -68,7 +68,7 @@ export async function getThemesSummary(req, res) {
     const result = await storiesService.getThemesSummary({ venue_id });
     return res.json(result);
   } catch (error) {
-    console.error("Error getThemesSummary:", error);
+    console.error("Error getThemesSummary:");
     return res.status(500).json({ error: "Error interno del servidor" });
   }
 }
@@ -86,7 +86,7 @@ export async function getStories(req, res) {
     const result = await storiesService.getStoriesByUser({ venue_id, user_id, viewer_user_id });
     return res.json(result);
   } catch (error) {
-    console.error("Error getStories:", error);
+    console.error("Error getStories:");
     return res.status(500).json({ error: "Error interno del servidor" });
   }
 }
@@ -151,7 +151,7 @@ export async function uploadStory(req, res) {
 
     return res.status(201).json(story);
   } catch (error) {
-    console.error("Error uploadStory:", error);
+    console.error("Error uploadStory:");
     return res.status(500).json({ error: error.message });
   }
 }
@@ -183,7 +183,7 @@ export async function toggleLike(req, res) {
 
     return res.json(result);
   } catch (error) {
-    console.error("Error toggleLike:", error);
+    console.error("Error toggleLike:");
     return res.status(500).json({ error: error.message });
   }
 }
@@ -214,7 +214,7 @@ export async function registerView(req, res) {
 
     return res.json(result);
   } catch (error) {
-    console.error("Error registerView:", error);
+    console.error("Error registerView:");
     return res.status(500).json({ error: error.message });
   }
 }
@@ -227,7 +227,7 @@ export async function getStoryViews(req, res) {
     const result = await storiesService.getStoryViews({ story_id });
     return res.json(result);
   } catch (error) {
-    console.error("Error getStoryViews:", error);
+    console.error("Error getStoryViews:");
     return res.status(500).json({ error: error.message });
   }
 }
@@ -240,7 +240,7 @@ export async function getStoryLikes(req, res) {
     const result = await storiesService.getStoryLikes({ story_id });
     return res.json(result);
   } catch (error) {
-    console.error("Error getStoryLikes:", error);
+    console.error("Error getStoryLikes:");
     return res.status(500).json({ error: error.message });
   }
 }
@@ -305,7 +305,7 @@ export async function toggleReaction(req, res) {
 
     return res.json(result);
   } catch (error) {
-    console.error("Error toggleReaction:", error);
+    console.error("Error toggleReaction:");
     return res.status(500).json({ error: error.message });
   }
 }

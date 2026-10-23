@@ -17,7 +17,7 @@ export const getActiveUsers = async (req, res) => {
 
     res.json(activeUsers)
   } catch (error) {
-    console.error('Error al obtener usuarios activos:', error)
+    console.error('Error al obtener usuarios activos:')
     res.status(500).json({ error: 'Error interno del servidor' })
   }
 }
@@ -43,18 +43,20 @@ export async function heartbeat(req, res) {
     const result = isAdminForVenue(req.user, venueId)
       ? await socialService.ensureVenueAdminPresence({
           user_id,
+          authenticatedUser: req.user,
           venue_id: venueId,
           table_id: table_id ?? null,
         })
       : await socialService.heartbeat({
           user_id,
+          authenticatedUser: req.user,
           venue_id: venueId,
           table_id: table_id ?? null,
         })
 
     return res.json(result)
   } catch (error) {
-    console.error('Error en heartbeat:', error)
+    console.error('Error en heartbeat:')
     if (error.statusCode) {
       return res.status(error.statusCode).json({
         error: error.code || error.message,

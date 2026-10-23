@@ -74,7 +74,7 @@ router.post("/background", authMiddleware, upload.single("file"), async (req, re
 
     res.json(profile);
   } catch (err) {
-    console.error("Error subiendo fondo de tarjeta:", err);
+    console.error("Error subiendo fondo de tarjeta:");
     res.status(500).json({
       error: "Error subiendo fondo de tarjeta",
       details: err?.message ?? err,
@@ -136,7 +136,7 @@ router.post("/avatar", authMiddleware, upload.single("file"), async (req, res) =
         foto_url: profile.avatar_url,
         });
   } catch (err) {
-    console.error("Error subiendo avatar social:", err);
+    console.error("Error subiendo avatar social:");
     res.status(500).json({
       error: "Error subiendo avatar social",
       details: err?.message ?? err,
@@ -221,7 +221,7 @@ router.post(
         gallery_urls: profile.gallery_urls ?? [],
       });
     } catch (err) {
-      console.error("Error subiendo galería social:", err);
+      console.error("Error subiendo galería social:");
       res.status(500).json({
         error: "Error subiendo galería social",
         details: err?.message ?? err,

@@ -12,7 +12,7 @@ export const createPayment = async (req, res) => {
     const payment = await pagoService.createPayment(id_pedido)
     res.status(200).json({ payment })
   } catch (err) {
-    console.error('Error crear pago:', err)
+    console.error('Error crear pago:')
     if (err.message === 'Pedido no encontrado') {
       return res.status(404).json({ error: err.message })
     }
@@ -37,7 +37,7 @@ export const wompiWebhook = async (req, res) => {
     const result = await pagoService.processWebhook(rawBody, signatureHeader)
     res.status(200).json(result)
   } catch (err) {
-    console.error('Error manejando webhook wompi:', err)
+    console.error('Error manejando webhook wompi:')
     if (err.message === 'Firma de webhook inválida' || err.message === 'Payload inválido') {
       return res.status(400).json({ error: err.message })
     }

@@ -42,7 +42,7 @@ class PagoService {
         raw: payment.raw || null
       })
     } catch (err) {
-      console.warn('No se pudo persistir registro de pago:', err.message)
+      console.warn('No se pudo persistir registro de pago:')
       // No lanzamos error para no interrumpir el flujo de pago al usuario,
       // pero idealmente esto debería ser transaccional o tener reintentos.
     }
@@ -63,7 +63,7 @@ class PagoService {
       if (process.env.WOMPI_SIGNATURE_SECRET) {
         throw new Error('Firma de webhook inválida')
       } else {
-        console.warn('Webhook signature verification failed (ignored in dev)', verify)
+        console.warn('Webhook signature verification failed (ignored in dev)')
       }
     }
 
@@ -135,7 +135,7 @@ class PagoService {
                 })
              }
            } catch (updateErr) {
-             console.error('Error en fallback update de pago:', updateErr)
+             console.error('Error en fallback update de pago:')
            }
         }
       }
@@ -161,7 +161,7 @@ class PagoService {
       updates.estado = 'pendiente' // opcional
     }
 
-    console.log("🔄 Actualizando Pedido:", pedidoId, updates)
+    console.log("🔄 Actualizando Pedido:")
     await pedidoRepository.update(pedidoId, updates)
 
 

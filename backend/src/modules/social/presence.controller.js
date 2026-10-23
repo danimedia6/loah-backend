@@ -11,7 +11,7 @@ export const validatePresenceQr = async (req, res) => {
 
     res.json(result);
   } catch (error) {
-    console.error("Error validando QR de presencia:", error);
+    console.error("Error validando QR de presencia:");
 
     if (error.statusCode) {
       return res.status(error.statusCode).json({ error: error.message });

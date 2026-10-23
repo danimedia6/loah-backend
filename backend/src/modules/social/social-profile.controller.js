@@ -16,7 +16,7 @@ export async function getMySocialProfile(req, res) {
 
     return res.json(profile || null);
   } catch (error) {
-    console.error("Error getMySocialProfile:", error);
+    console.error("Error getMySocialProfile:");
     return res.status(400).json({ error: error.message });
   }
 }
@@ -33,7 +33,7 @@ export async function saveMySocialProfile(req, res) {
 
     return res.json(profile);
   } catch (error) {
-    console.error("Error saveMySocialProfile:", error);
+    console.error("Error saveMySocialProfile:");
     return res.status(400).json({ error: error.message });
   }
 }

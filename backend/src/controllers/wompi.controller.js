@@ -36,7 +36,7 @@ export async function crearTransaccion(req, res) {
       }
     )
 
-    console.log("🧾 Pago creado:", JSON.stringify(createResp.data, null, 2))
+    console.log("🧾 Pago creado:")
 
     const linkId = createResp.data?.data?.id
     if (!linkId) {
@@ -60,7 +60,7 @@ export async function crearTransaccion(req, res) {
 
     return res.json({ checkoutUrl })
   } catch (error) {
-    console.error("❌ Error creando link de pago:", error.response?.data || error.message)
+    console.error("❌ Error creando link de pago:")
     return res.status(500).json({ error: "Error creando link de pago" })
   }
 }
@@ -72,12 +72,12 @@ export async function webhookWompi(req, res) {
       try {
         body = JSON.parse(body.toString("utf8"))
       } catch (e) {
-        console.error("❌ Error parseando raw webhook:", e.message)
+        console.error("❌ Error parseando raw webhook:")
         return res.status(400).json({ error: "Body inválido" })
       }
     }
 
-    console.log("📩 Webhook recibido:", JSON.stringify(body, null, 2))
+    console.log("📩 Webhook recibido:")
 
     const event = body?.event
     const tx = body?.data?.transaction
@@ -92,14 +92,7 @@ export async function webhookWompi(req, res) {
     const paymentLinkId = tx.payment_link_id || tx.payment_link
     const referencia = tx.reference
 
-    console.log(
-      "📌 Webhook TX:",
-      "event:", event,
-      "status:", status,
-      "payment_link_id:", paymentLinkId,
-      "reference:", referencia,
-      "txId:", transactionId
-    )
+    console.log("📌 Webhook TX:")
 
     if (!paymentLinkId) {
       console.warn("⚠ TX sin payment_link_id, no se puede asociar a pagos")
@@ -114,19 +107,19 @@ export async function webhookWompi(req, res) {
       .limit(1)
 
     if (pagosErr) {
-      console.error("❌ Error buscando pago:", pagosErr)
+      console.error("❌ Error buscando pago:")
       return res.status(500).json({ error: "Error buscando pago" })
     }
 
     if (!pagos || pagos.length === 0) {
-      console.warn("⚠ No se encontró pago con payment_link_id:", paymentLinkId)
+      console.warn("⚠ No se encontró pago con payment_link_id:")
       return res.status(200).json({ ok: false })
     }
 
     const pago = pagos[0]
     const id_pedido = pago.id_pedido
 
-    console.log("🧾 Pago encontrado en BD:", pago)
+    console.log("🧾 Pago encontrado en BD:")
 
     // 2️⃣ Actualizar registro de pagos
     await supabase
@@ -148,14 +141,14 @@ export async function webhookWompi(req, res) {
         .single()
 
       if (pedidoFetchErr) {
-        console.error("❌ Error obteniendo pedido:", pedidoFetchErr)
+        console.error("❌ Error obteniendo pedido:")
         return res.status(500).json({ error: "Error obteniendo pedido" })
       }
 
       const id_cliente = pedidoData?.id_cliente
 
       if (!id_cliente) {
-        console.error("❌ No se encontró id_cliente para el pedido:", id_pedido)
+        console.error("❌ No se encontró id_cliente para el pedido:")
         return res.status(500).json({ error: "No se encontró cliente" })
       }
 
@@ -167,15 +160,15 @@ export async function webhookWompi(req, res) {
         .eq("pago", "no_pagado")
 
       if (pedidoErr) {
-        console.error("❌ Error actualizando pedidos:", pedidoErr)
+        console.error("❌ Error actualizando pedidos:")
       } else {
-        console.log(`💰 ${count || 0} pedido(s) marcado(s) como pagado para cliente ${id_cliente}`)
+        console.log("[wompi.controller.js] log")
       }
     }
 
     return res.status(200).json({ ok: true })
   } catch (error) {
-    console.error("❌ Error en webhook:", error.message)
+    console.error("❌ Error en webhook:")
     return res.status(500).json({ error: "Webhook processing error" })
   }
 }

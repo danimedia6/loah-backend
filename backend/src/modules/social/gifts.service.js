@@ -61,7 +61,7 @@ class GiftsService {
                 .single();
 
             if (storyError || !story?.venue_id) {
-                console.error("[GIFT][VALIDATION] Error resolviendo venue de historia:", storyError?.message);
+                console.error("[GIFT][VALIDATION] Error resolviendo venue de historia:");
                 throw new GiftError("No se pudo resolver el venue de la historia");
             }
 
@@ -444,7 +444,7 @@ class GiftsService {
         .single();
 
       if (storyError || !story) {
-        console.error("[GIFT] Error resolviendo story para pedido:", storyError);
+        console.error("[GIFT] Error resolviendo story para pedido:");
         throw new Error("No se pudo resolver el venue de la historia");
       }
 
@@ -455,7 +455,7 @@ class GiftsService {
       throw new Error("No se pudo resolver el venue del obsequio");
     }
 
-    console.log("[GIFT] venue_id resuelto para pedido:", venue_id);
+    console.log("[GIFT] venue_id resuelto para pedido:");
 
     const { data: activePedido, error: activePedidoError } = await supabase
       .from("pedidos")
@@ -467,17 +467,14 @@ class GiftsService {
       .maybeSingle();
 
     if (activePedidoError) {
-      console.error("[GIFT] Error buscando pedido activo:", activePedidoError);
+      console.error("[GIFT] Error buscando pedido activo:");
       throw new Error(activePedidoError.message);
     }
 
-    console.log("[GIFT] pedido activo encontrado:", activePedido);
+    console.log("[GIFT] pedido activo encontrado:");
 
     if (activePedido) {
-      console.log("[GIFT] actualizando pedido existente con gift:", {
-        pedido_id: activePedido.id_pedido,
-        items_antes: activePedido.items,
-      });
+      console.log("[GIFT] actualizando pedido existente con gift:");
 
       const items = Array.isArray(activePedido.items) ? [...activePedido.items] : [];
 
@@ -504,20 +501,13 @@ class GiftsService {
         .eq("id_pedido", activePedido.id_pedido);
 
       if (updateError) {
-        console.error("[GIFT] Error actualizando pedido:", updateError);
+        console.error("[GIFT] Error actualizando pedido:");
         throw new Error(updateError.message);
       }
 
-      console.log("[GIFT] pedido actualizado correctamente:", {
-        pedido_id: activePedido.id_pedido,
-        total: newTotal,
-      });
+      console.log("[GIFT] pedido actualizado correctamente:");
     } else {
-      console.log("[GIFT] creando pedido nuevo para sender:", {
-        id_cliente: String(gift.sender_id),
-        venue_id,
-        product_id: gift.product_id,
-      });
+      console.log("[GIFT] creando pedido nuevo para sender:");
 
       const { error: insertError } = await supabase
         .from("pedidos")
@@ -540,7 +530,7 @@ class GiftsService {
         });
 
       if (insertError) {
-        console.error("[GIFT] Error creando pedido nuevo:", insertError);
+        console.error("[GIFT] Error creando pedido nuevo:");
         throw new Error(insertError.message);
       }
 

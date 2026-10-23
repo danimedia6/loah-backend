@@ -67,11 +67,23 @@ SUPABASE_KEY=<your-supabase-key>
 JWT_SECRET=<una-cadena-secreta-larga-para-firmar-jwt>
 CLIENT_URL=http://localhost:5173
 PORT=4000
+NODE_ENV=production
+ENABLE_DEBUG_ROUTES=false
 WOMPI_PUB_KEY=<wompi-public-key>
 WOMPI_PRV_KEY=<wompi-private-key>
 WOMPI_INTEGRITY_SECRET=<wompi-integrity-secret>
 WOMPI_EVENT_SECRET=<wompi-event-secret>
 ```
+
+`JWT_SECRET` no tiene fallback: debe ser una clave aleatoria de al menos 32 bytes,
+sin espacios al inicio/final. Un valor ausente o invalido impide el arranque antes
+de inicializar clientes, sockets o tareas. No uses literalmente los placeholders.
+En Render, verifica en Environment la presencia de `JWT_SECRET`, `SUPABASE_URL`,
+`SUPABASE_KEY`, `NODE_ENV=production` y los origenes `CLIENT_URL`/`CLIENT_URLS`;
+no imprimas ni compartas sus valores secretos. Guarda y vuelve a desplegar.
+No cambies una clave ya segura: rotarla invalida los JWT existentes.
+Los logs de arranque solo indican configuracion invalida, nunca el valor.
+Consulta [el informe de seguridad 0.3](backend/tests/AUTH_SECURITY.md) para limites y pruebas.
 
 ## Estructura del Proyecto
 
@@ -216,14 +228,19 @@ Tarea de compatibilidad pendiente, fuera del Bloque 0.1:
 | `GET` | `/` | Ver historial de eventos | Admin | Query: `page`, `limit`, `id_pedido` |
 
 ### Debug (`/api/debug`)
-> **Nota:** Endpoints solo para desarrollo.
-| Método | Endpoint | Descripción | Auth |
-| :--- | :--- | :--- | :--- |
-| `GET` | `/pedidos/:id` | Ver pedido raw | Público |
-| `POST` | `/pedidos/:id/update` | Forzar update | Público |
+No se monta en produccion, test ni entornos ausentes/desconocidos.
+Solo se monta con `NODE_ENV=development` y `ENABLE_DEBUG_ROUTES=true`.
+Incluso entonces requiere conexion local directa, JWT y admin vigente.
+Los dos endpoints heredados de pedidos responden `410`: no leen ni escriben pedidos.
 
 ## Autenticación y roles
 - El proyecto usa JWT firmado con `JWT_SECRET`.
+- Firma y expiracion (8 horas) conservadas. HTTP y Socket.IO consultan la cuenta
+  actual y rechazan cuentas inexistentes/suspendidas; los permisos no proceden
+  del rol ni venue historicos del token. Fallos de autorizacion en almacenamiento: `503`.
+- La autenticacion opcional permite ausencia de credenciales, no credenciales
+  invalidas: un token invalido/expirado responde `401`, una cuenta suspendida `403`.
+- No se implemento revocacion completa de sesiones; ver el informe 0.3.
 - Header requerido para rutas protegidas: `Authorization: Bearer <token>`.
 - Roles soportados: `admin`, `cliente`, `mesero`.
 

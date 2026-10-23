@@ -12,7 +12,7 @@ export const getUsuarios = async (req, res) => {
     res.json(usuarios)
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message })
-    console.error('Error al obtener usuarios:', error)
+    console.error('Error al obtener usuarios:')
     res.status(500).json({ error: 'Error interno del servidor' })
   }
 }
@@ -30,7 +30,7 @@ export const getUsuarioById = async (req, res) => {
     res.json(usuario)
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message })
-    console.error('Error al obtener usuario:', error)
+    console.error('Error al obtener usuario:')
     if (error.message === 'Usuario no encontrado') {
       return res.status(404).json({ error: error.message })
     }
@@ -50,7 +50,7 @@ export const createUsuario = async (req, res) => {
     res.status(201).json(nuevoUsuario)
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message })
-    console.error('Error al crear usuario:', error)
+    console.error('Error al crear usuario:')
     if (error.message === 'El correo ya está registrado') {
       return res.status(409).json({ error: error.message })
     }
@@ -71,7 +71,7 @@ export const updateUsuario = async (req, res) => {
     res.json(usuarioActualizado)
   } catch (error) {
     if (error.statusCode) return res.status(error.statusCode).json({ error: error.message })
-    console.error('Error al actualizar usuario:', error)
+    console.error('Error al actualizar usuario:')
     if (error.message === 'Usuario no encontrado') {
       return res.status(404).json({ error: error.message })
     }
@@ -98,7 +98,7 @@ export const deleteUsuario = async (req, res) => {
       if (error.code === 'ACCOUNT_DELETION_UNAVAILABLE') response.code = error.code
       return res.status(error.statusCode).json(response)
     }
-    console.error('Error al eliminar usuario:', error)
+    console.error('Error al eliminar usuario:')
     res.status(500).json({ error: 'Error interno del servidor' })
   }
 }

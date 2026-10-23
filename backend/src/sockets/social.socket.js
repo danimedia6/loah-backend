@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken'
+import { AuthenticationError, authenticateAccessToken, getCurrentAuthUser } from '../services/auth-context.service.js'
 import socialService from '../modules/social/social.service.js'
 import chatService from '../modules/social/chat.service.js'
 import { setSocketInstance } from './socketInstance.js'
@@ -43,10 +43,6 @@ function removeActiveSocket(userId, socketId) {
   return sockets.size
 }
 
-function getAuthenticatedUserId(payload) {
-  return payload.id_usuario || payload.id || payload.user_id || null
-}
-
 function isAdminForVenue(user, venueId) {
   return (user?.rol || user?.role) === 'admin' &&
     Number(user?.venue_id) === Number(venueId)
@@ -54,38 +50,36 @@ function isAdminForVenue(user, venueId) {
 
 export function setupSocialSocket(io) {
   setSocketInstance(io)
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     try {
       const token = getTokenFromSocket(socket)
 
       if (!token) {
-        return next(new Error('No autorizado'))
+        throw new AuthenticationError('No autorizado')
       }
 
-      const payload = jwt.verify(token, process.env.JWT_SECRET || 'secret')
-      const userId = getAuthenticatedUserId(payload)
-
-      if (!userId) {
-        return next(new Error('Token sin usuario'))
-      }
-
-      socket.data.user = payload
-      socket.data.user_id = userId
-      socket.join(`user:${socket.data.user_id}`)
+      socket.data.user = await authenticateAccessToken(token)
+      socket.data.user_id = socket.data.user.id
+      await socket.join(`user:${socket.data.user_id}`)
 
       next()
     } catch (error) {
-      next(new Error('Token inválido o expirado'))
+      const temporarilyUnavailable = error instanceof AuthenticationError &&
+        error.statusCode === 503 && error.code === 'AUTH_UNAVAILABLE'
+      const connectionError = new Error(temporarilyUnavailable
+        ? 'Autenticacion temporalmente no disponible' : 'Cuenta no autorizada')
+      connectionError.data = {
+        code: temporarilyUnavailable ? 'AUTH_TEMPORARILY_UNAVAILABLE'
+          : error instanceof AuthenticationError ? error.code : 'AUTH_REQUIRED',
+      }
+      next(connectionError)
     }
   })
 
   io.on('connection', (socket) => {
     addActiveSocket(socket.data.user_id, socket.id)
 
-    console.log('🔌 Socket autenticado:', {
-      socketId: socket.id,
-      userId: socket.data.user_id,
-    })
+    console.log('🔌 Socket autenticado:')
 
     socket.emit('socket:ready', {
       message: 'Socket conectado y autenticado correctamente',
@@ -104,16 +98,19 @@ export function setupSocialSocket(io) {
     }
 
     const normalizedVenueId = Number(finalVenueId)
+    socket.data.user = await getCurrentAuthUser(socket.data.user)
 
     if (isAdminForVenue(socket.data.user, normalizedVenueId)) {
       await socialService.ensureVenueAdminPresence({
         user_id: socket.data.user_id,
+        authenticatedUser: socket.data.user,
         venue_id: normalizedVenueId,
         table_id: finalTableId,
       })
     } else {
       await socialService.heartbeat({
         user_id: socket.data.user_id,
+        authenticatedUser: socket.data.user,
         venue_id: normalizedVenueId,
         table_id: finalTableId,
       })
@@ -126,7 +123,7 @@ export function setupSocialSocket(io) {
 
     await emitPresenceUpdateForVenue(finalVenueId, { io })
     } catch (error) {
-        console.error('❌ Error en social:join-venue:', error.message)
+        console.error('❌ Error en social:join-venue:')
         const targetVenueId = venueId || venue_id || null
 
         if (targetVenueId) {
@@ -157,16 +154,19 @@ export function setupSocialSocket(io) {
         }
 
         const normalizedVenueId = Number(finalVenueId)
+        socket.data.user = await getCurrentAuthUser(socket.data.user)
 
         if (isAdminForVenue(socket.data.user, normalizedVenueId)) {
         await socialService.ensureVenueAdminPresence({
             user_id: socket.data.user_id,
+            authenticatedUser: socket.data.user,
             venue_id: normalizedVenueId,
             table_id: finalTableId,
         })
         } else {
         await socialService.heartbeat({
             user_id: socket.data.user_id,
+            authenticatedUser: socket.data.user,
             venue_id: normalizedVenueId,
             table_id: finalTableId,
         })
@@ -177,7 +177,7 @@ export function setupSocialSocket(io) {
 
         await emitPresenceUpdateForVenue(finalVenueId, { io })
     } catch (error) {
-        console.error('❌ Error en presence:heartbeat:', error.message)
+        console.error('❌ Error en presence:heartbeat:')
         const targetVenueId = venueId || venue_id || socket.data.venue_id || null
 
         if (targetVenueId) {
@@ -213,12 +213,9 @@ export function setupSocialSocket(io) {
 
         socket.join(`conversation:${finalConversationId}`)
 
-        console.log('💬 Usuario unido a conversación:', {
-        userId: socket.data.user_id,
-        conversationId: finalConversationId,
-        })
+        console.log('💬 Usuario unido a conversación:')
     } catch (error) {
-        console.error('❌ Error en chat:join-conversation:', error.message)
+        console.error('❌ Error en chat:join-conversation:')
         socket.emit('chat:error', { error: error.message })
     }
     })
@@ -275,22 +272,17 @@ export function setupSocialSocket(io) {
         updateConversations(),
         ]).then((results) => {
         if (results.some((result) => result.status === 'rejected')) {
-            console.error('[chat] secondary chat updates failed', {
-            messageId: message?.id,
-            errors: results
-                .filter((result) => result.status === 'rejected')
-                .map((result) => result.reason?.message || String(result.reason)),
-            })
+            console.error('[chat] secondary chat updates failed')
         }
         })
     } catch (error) {
-        console.error("❌ Error en chat:send-message:", error.message)
+        console.error("❌ Error en chat:send-message:")
         if (ack) ack({ ok: false, error: error.message })
     }
     })
 
     socket.on('disconnect', async (reason) => {
-      console.log('🔌 Socket desconectado:', socket.id, reason)
+      console.log('🔌 Socket desconectado:')
 
       try {
         const remainingSockets = removeActiveSocket(socket.data.user_id, socket.id)
@@ -305,7 +297,7 @@ export function setupSocialSocket(io) {
 
         await emitPresenceUpdateForVenue(venueId, { io })
       } catch (error) {
-        console.error('❌ Error al actualizar presencia en disconnect:', error.message)
+        console.error('❌ Error al actualizar presencia en disconnect:')
       }
     })
   })

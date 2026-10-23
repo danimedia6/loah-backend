@@ -50,6 +50,7 @@ class AuthService {
       correo,
       contrasena_hash,
       rol: 'cliente',
+      is_suspended: false,
       fecha_registro
     })
     return toUsuarioResponse(user)
@@ -69,7 +70,7 @@ class AuthService {
     }
 
     const match = await bcrypt.compare(contrasena, usuario.contrasena_hash)
-    if (!match) {
+    if (!match || usuario.is_suspended !== false) {
       throw new Error('Credenciales inválidas')
     }
 

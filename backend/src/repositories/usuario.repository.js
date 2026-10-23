@@ -65,6 +65,7 @@ class UsuarioRepository {
         nombre,
         correo,
         contrasena_hash,
+        is_suspended,
         rol,
         venue_id,
         fecha_registro

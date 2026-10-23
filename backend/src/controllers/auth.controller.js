@@ -1,6 +1,7 @@
 import authService from '../services/auth.service.js'
 import usuarioService from '../services/usuario.service.js'
 import jwt from 'jsonwebtoken'
+import { JWT_SECRET } from '../config/security.config.js'
 
 // Simple in-memory rate limiter for login attempts per email
 const failedLogins = {} // { [email]: { count, firstAttemptTs } }
@@ -19,7 +20,7 @@ export const signup = async (req, res) => {
     const newUser = await authService.signup(req.body)
     res.status(201).json({ id_usuario: newUser.id_usuario })
   } catch (err) {
-    console.error('Signup error:', err)
+    console.error('Signup error:')
     if (err.message === 'Este correo ya está registrado') {
       return res.status(409).json({ error: err.message })
     }
@@ -64,7 +65,7 @@ export const login = async (req, res) => {
         venue_id: usuario.venue_id ?? null,
       }
 
-      const token = jwt.sign(payload, process.env.JWT_SECRET || 'secret', {
+      const token = jwt.sign(payload, JWT_SECRET, {
         expiresIn: '8h',
       })
 
@@ -81,7 +82,7 @@ export const login = async (req, res) => {
     }
 
   } catch (err) {
-    console.error('Error en login:', err)
+    console.error('Error en login:')
     res.status(500).json({ error: 'Error interno al autenticar' })
   }
 }
@@ -100,7 +101,7 @@ export const getMe = async (req, res) => {
     const usuario = await usuarioService.getUsuarioById(userId, req.user)
     res.json(usuario)
   } catch (error) {
-    console.error('Error en getMe:', error)
+    console.error('Error en getMe:')
     if (error.message === 'Usuario no encontrado') {
       return res.status(404).json({ error: 'Usuario no encontrado' })
     }

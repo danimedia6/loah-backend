@@ -52,7 +52,7 @@ class MesaService {
       try {
         await mesaRepository.syncIdSequence()
       } catch (error) {
-        console.error('Error calling sync_mesas_id_sequence:', error)
+        console.error('Error calling sync_mesas_id_sequence:')
         // No fallamos la request si esto falla, solo logueamos
       }
     }

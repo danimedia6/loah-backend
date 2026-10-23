@@ -29,7 +29,7 @@ class SafetyController {
       const blocker_id = getAuthUserId(req);
       const { blocked_id, reason, visibility_mode } = req.body;
 
-      console.log("[safety block:req.body]", req.body);
+      console.log("[safety block:req.body]");
 
       const data = await safetyService.blockUser({
         blocker_id,

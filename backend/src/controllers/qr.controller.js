@@ -26,17 +26,13 @@ export async function generateQr(req, res) {
       venueId
     )
 
-    console.log('[QR] generado para mesa:', {
-      mesaId: id,
-      venueId,
-      url,
-    })
+    console.log('[QR] generado para mesa:')
 
     res.setHeader('Content-Type', contentType)
     res.setHeader('Content-Disposition', `attachment; filename=${filename}`)
     return res.send(buffer)
   } catch (err) {
-    console.error('Error generando QR de mesa:', err)
+    console.error('Error generando QR de mesa:')
 
     if (err.message === 'Mesa no encontrada') {
       return res.status(404).json({ error: err.message })
@@ -62,16 +58,13 @@ export async function generateVenueQr(req, res) {
       venueId
     )
 
-    console.log('[QR] generado para venue:', {
-      venueId,
-      url,
-    })
+    console.log('[QR] generado para venue:')
 
     res.setHeader('Content-Type', contentType)
     res.setHeader('Content-Disposition', `attachment; filename=${filename}`)
     return res.send(buffer)
   } catch (err) {
-    console.error('Error generando QR de venue:', err)
+    console.error('Error generando QR de venue:')
 
     if (err.message === 'Venue requerido para generar QR') {
       return res.status(400).json({ error: err.message })

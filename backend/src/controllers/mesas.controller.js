@@ -17,7 +17,7 @@ export const getMesas = async (req, res) => {
     const mesas = await mesaService.getMesas({ venue_id: venueId })
     res.json(mesas)
   } catch (error) {
-    console.error('Error al obtener mesas:', error)
+    console.error('Error al obtener mesas:')
     res.status(error.statusCode || 500).json({ error: error.message || 'Error interno del servidor' })
   }
 }
@@ -34,7 +34,7 @@ export const getMesaById = async (req, res) => {
     const mesa = await mesaService.getMesaById(id)
     res.json(mesa)
   } catch (error) {
-    console.error('Error al obtener mesa:', error)
+    console.error('Error al obtener mesa:')
     if (error.message === 'Mesa no encontrada') {
       return res.status(404).json({ error: error.message })
     }
@@ -54,7 +54,7 @@ export const createMesa = async (req, res) => {
     const nuevaMesa = await mesaService.createMesa(req.body, venueId)
     res.status(201).json(nuevaMesa)
   } catch (error) {
-    console.error('Error al crear mesa:', error)
+    console.error('Error al crear mesa:')
     res.status(error.statusCode || 500).json({ error: error.message || 'Error interno del servidor' })
   }
 }
@@ -72,7 +72,7 @@ export const updateMesa = async (req, res) => {
     const mesaActualizada = await mesaService.updateMesa(id, req.body, venueId)
     res.json(mesaActualizada)
   } catch (error) {
-    console.error('Error al actualizar mesa:', error)
+    console.error('Error al actualizar mesa:')
     if (error.message === 'Mesa no encontrada') {
       return res.status(404).json({ error: error.message })
     }
@@ -93,7 +93,7 @@ export const deleteMesa = async (req, res) => {
     await mesaService.deleteMesa(id, venueId)
     res.status(204).send()
   } catch (error) {
-    console.error('Error al eliminar mesa:', error)
+    console.error('Error al eliminar mesa:')
     if (error.message === 'Mesa no encontrada') {
       return res.status(404).json({ error: error.message })
     }

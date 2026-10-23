@@ -18,7 +18,7 @@ export async function getMyConversations(req, res) {
 
     return res.json(conversations);
   } catch (error) {
-    console.error("Error getMyConversations:", error);
+    console.error("Error getMyConversations:");
     return res.status(400).json({ error: error.message });
   }
 }
@@ -39,7 +39,7 @@ export async function getConversationMessages(req, res) {
 
     return res.json(messages);
   } catch (error) {
-    console.error("Error getConversationMessages:", error);
+    console.error("Error getConversationMessages:");
     return res.status(400).json({ error: error.message });
   }
 }
@@ -62,7 +62,7 @@ export async function sendChatMessage(req, res) {
 
     return res.status(201).json(createdMessage);
   } catch (error) {
-    console.error("Error sendChatMessage:", error);
+    console.error("Error sendChatMessage:");
     return res.status(400).json({ error: error.message });
   }
 }
@@ -83,7 +83,7 @@ export async function markConversationAsRead(req, res) {
 
     return res.json(result);
   } catch (error) {
-    console.error("Error markConversationAsRead:", error);
+    console.error("Error markConversationAsRead:");
     return res.status(400).json({ error: error.message });
   }
 }

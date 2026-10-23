@@ -113,7 +113,7 @@ export const getVenueById = async (req, res) => {
 
     res.json(venue);
   } catch (error) {
-    console.error("Error obteniendo venue:", error);
+    console.error("Error obteniendo venue:");
     res.status(500).json({ error: "Error interno del servidor" });
   }
 };
@@ -125,7 +125,7 @@ export const getMyVenue = async (req, res) => {
 
     res.json(venue);
   } catch (error) {
-    console.error("Error obteniendo venue administrado:", error);
+    console.error("Error obteniendo venue administrado:");
     sendVenueError(res, error);
   }
 };
@@ -158,7 +158,7 @@ export const updateVenueSettings = async (req, res) => {
 
     res.json(venue);
   } catch (error) {
-    console.error("Error actualizando configuración del venue:", error);
+    console.error("Error actualizando configuración del venue:");
     sendVenueError(res, error);
   }
 };
@@ -176,7 +176,7 @@ export const updateVenueProfile = async (req, res) => {
 
     res.json(venue);
   } catch (error) {
-    console.error("Error actualizando perfil del venue:", error);
+    console.error("Error actualizando perfil del venue:");
     sendVenueError(res, error);
   }
 };
@@ -193,7 +193,7 @@ export const uploadVenueLogo = async (req, res) => {
 
     res.json(venue);
   } catch (error) {
-    console.error("Error subiendo logo del venue:", error);
+    console.error("Error subiendo logo del venue:");
     sendVenueError(res, error);
   }
 };
@@ -210,7 +210,7 @@ export const uploadVenueCover = async (req, res) => {
 
     res.json(venue);
   } catch (error) {
-    console.error("Error subiendo cover del venue:", error);
+    console.error("Error subiendo cover del venue:");
     sendVenueError(res, error);
   }
 };
@@ -223,7 +223,7 @@ export const generatePresenceQr = async (req, res) => {
 
     res.status(201).json(result);
   } catch (error) {
-    console.error("Error generando QR de presencia:", error);
+    console.error("Error generando QR de presencia:");
     sendVenueError(res, error);
   }
 };

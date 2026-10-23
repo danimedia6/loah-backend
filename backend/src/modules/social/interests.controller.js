@@ -214,7 +214,7 @@ export async function correspondStoryReaction(req, res) {
       notification,
     });
   } catch (error) {
-    console.error("Error correspondStoryReaction:", error);
+    console.error("Error correspondStoryReaction:");
     return handleInterestError(res, error);
   }
 }
@@ -272,7 +272,7 @@ export async function likeProfile(req, res) {
       notifications,
     });
   } catch (error) {
-    console.error("Error likeProfile:", error);
+    console.error("Error likeProfile:");
     return handleInterestError(res, error);
   }
 }
@@ -291,7 +291,7 @@ export async function unlikeProfile(req, res) {
 
     return res.json(result);
   } catch (error) {
-    console.error("Error unlikeProfile:", error);
+    console.error("Error unlikeProfile:");
     return handleInterestError(res, error);
   }
 }
@@ -308,7 +308,7 @@ export async function getMutualInterests(req, res) {
 
     return res.json(result);
   } catch (error) {
-    console.error("Error getMutualInterests:", error);
+    console.error("Error getMutualInterests:");
     return handleInterestError(res, error);
   }
 }
@@ -327,7 +327,7 @@ export async function getProfileLikeStatus(req, res) {
 
     return res.json(result);
   } catch (error) {
-    console.error("Error getProfileLikeStatus:", error);
+    console.error("Error getProfileLikeStatus:");
     return handleInterestError(res, error);
   }
 }

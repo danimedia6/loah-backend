@@ -1,7 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import dotenv from 'dotenv'
-
-dotenv.config()
+import './security.config.js'
 
 /**
  * Cliente de Supabase configurado con variables de entorno.

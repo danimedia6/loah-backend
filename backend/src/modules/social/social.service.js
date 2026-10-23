@@ -1,6 +1,17 @@
 import supabase from '../../config/supabaseClient.js'
 import safetyService from './safety.service.js'
 import { getVenueOpenWindow } from './presence-hours.helper.js'
+import { getCurrentAuthUser } from '../../services/auth-context.service.js'
+import { assertVenueAdmin } from './venue-ownership.helper.js'
+
+async function requireCurrentVenueAdmin(userId, venueId, user) {
+  // Optional context comes only from the current HTTP/socket authentication, never payloads.
+  const current = user || await getCurrentAuthUser({ id: userId })
+  if (Number(current.id) !== Number(userId) || current.is_suspended !== false) {
+    throw Object.assign(new Error('No autorizado'), { statusCode: 403 })
+  }
+  assertVenueAdmin(current, venueId)
+}
 
 const PRESENCE_TTL_MS = 30 * 60 * 1000
 const PRESENCE_EXPIRED_EVENT = 'social:presence-expired'
@@ -36,10 +47,7 @@ class SocialService {
   suppressPresenceExpiredEvent = false,
 } = {}) {
   const now = new Date();
-  console.log("[getActiveUsers presence source]", {
-    venue_id,
-    viewer_user_id: user_id,
-  });
+  console.log("[getActiveUsers presence source]");
 
   let presenceQuery = supabase
     .from("venue_presence_sessions")
@@ -55,19 +63,7 @@ class SocialService {
 
   if (presenceError) throw new Error(presenceError.message);
 
-  console.log("[presence expiry debug]", {
-    now: now.toISOString(),
-    sessions: (presenceRows || []).map((session) => ({
-      id: session.id,
-      user_id: session.user_id,
-      venue_id: session.venue_id,
-      valid_until: session.valid_until,
-      hard_expires_at: session.hard_expires_at,
-      status: "active",
-      expiredByValidUntil: Date.now() >= new Date(session.valid_until).getTime(),
-      expiredByHardExpiresAt: Date.now() >= new Date(session.hard_expires_at).getTime(),
-    })),
-  });
+  console.log("[presence expiry debug]");
 
   const expiredSessions = (presenceRows || [])
     .filter((row) =>
@@ -77,9 +73,7 @@ class SocialService {
   const expiredSessionIds = expiredSessions.map((row) => row.id);
   const expiredSessionIdSet = new Set(expiredSessionIds);
 
-  console.log("[presence expiry candidates]", {
-    expiredSessionIds,
-  });
+  console.log("[presence expiry candidates]");
 
   if (expiredSessionIds.length) {
     const { data: expireData, error: expireError } = await supabase
@@ -88,10 +82,7 @@ class SocialService {
       .in("id", expiredSessionIds)
       .eq("status", "active");
 
-    console.log("[presence expiry update]", {
-      data: expireData,
-      error: expireError,
-    });
+    console.log("[presence expiry update]");
 
     if (expireError) throw new Error(expireError.message);
 
@@ -213,6 +204,7 @@ class SocialService {
   async getActivePresenceSession({
     user_id,
     venue_id,
+    authenticatedUser = null,
     onExpired = null,
     suppressPresenceExpiredEvent = false,
   }) {
@@ -228,6 +220,7 @@ class SocialService {
         user_id,
         venue_id,
         access_token_id,
+        source,
         table_id,
         validated_at,
         last_activity_at,
@@ -269,6 +262,9 @@ class SocialService {
       return null
     }
 
+    if (session.source === 'venue_admin') {
+      await requireCurrentVenueAdmin(userId, venueId, authenticatedUser)
+    }
     return session
   }
 
@@ -327,10 +323,11 @@ class SocialService {
     )
   }
 
-  async ensureVenueAdminPresence({ user_id, venue_id, table_id = null }) {
+  async ensureVenueAdminPresence({ user_id, venue_id, table_id = null, authenticatedUser = null }) {
     const userId = Number(user_id)
     const venueId = Number(venue_id)
     const finalTableId = table_id ?? null
+    await requireCurrentVenueAdmin(userId, venueId, authenticatedUser)
 
     if (!userId) {
       throw new PresenceError(
@@ -498,6 +495,7 @@ class SocialService {
     user_id,
     venue_id,
     table_id,
+    authenticatedUser = null,
     onExpired = null,
     suppressPresenceExpiredEvent = false,
   }) {
@@ -525,6 +523,7 @@ class SocialService {
     const session = await this.getActivePresenceSession({
       user_id: userId,
       venue_id: venueId,
+      authenticatedUser,
       suppressPresenceExpiredEvent,
       onExpired: async (expiredSession) => {
         expiredSessionDetected = true

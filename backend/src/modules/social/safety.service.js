@@ -19,12 +19,7 @@ class SafetyService {
     if (!blockedId) throw new Error("Usuario a bloquear inválido");
     if (blockerId === blockedId) throw new Error("No puedes bloquearte a ti mismo");
 
-    console.log("[safety block:service payload]", {
-      blocker_id,
-      blocked_id,
-      reason,
-      visibility_mode,
-    });
+    console.log("[safety block:service payload]");
 
     const blockPayload = {
       blocker_id: blockerId,
@@ -34,7 +29,7 @@ class SafetyService {
       updated_at: new Date().toISOString(),
     };
 
-    console.log("[safety block:persist payload]", blockPayload);
+    console.log("[safety block:persist payload]");
 
     const { data, error } = await supabase
       .from("social_user_blocks")

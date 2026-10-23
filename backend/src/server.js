@@ -1,6 +1,8 @@
+import './config/security.config.js'
 import express from 'express'
 import cors from 'cors'
-import morgan from 'morgan'
+import { createRequestLogger } from './middlewares/request-logging.js'
+import { errorHandler } from './middlewares/errorHandler.js'
 import auditoriaRoutes from './routes/auditoria.routes.js'
 import mesasRoutes from './routes/mesas.route.js'
 //import paymentsRoutes from './routes/payments.routes.js'
@@ -13,7 +15,7 @@ import usuariosRoutes from './routes/usuarios.routes.js'
 import authRoutes from './routes/auth.routes.js'
 import categoriasRoutes from './routes/categorias.routes.js'
 import adminRoutes from './routes/admin.routes.js'
-import debugRoutes from './routes/debug.routes.js'
+import { mountDebugRoutes } from './routes/debug.routes.js'
 import wompiRoutes from './routes/wompi.routes.js'
 import socialRoutes from './modules/social/social.routes.js'
 import giftsRouter from "./modules/social/gifts.router.js";
@@ -42,7 +44,7 @@ import profileBackgroundRoutes from "./modules/social/profile-background.routes.
 const app = express()
 
 // Request logging
-app.use(morgan('dev'))
+app.use(createRequestLogger())
 
 // CORS configuration
 // Accept a comma-separated list in CLIENT_URLS or a single CLIENT_URL.
@@ -66,7 +68,7 @@ const corsOptions = {
     if (isDevOrTest && isLocalhost) return callback(null, true)
 
     // Log rejected origins to help debug deployed CORS issues
-    console.warn(`CORS: rejecting origin '${origin}' (allowed: ${configuredOrigins.length ? configuredOrigins.join(',') : 'none'})`)
+    console.warn("[server.js] warn")
     return callback(new Error('CORS policy: This origin is not allowed'))
   },
   credentials: true, // Allow cookies/credentials to be sent
@@ -101,8 +103,7 @@ app.use("/api/social/safety", safetyRoutes);
 app.use('/api/wompi', wompiRoutes)
 
 app.use('/api/admin', adminRoutes)
-// Debug routes (local only) - no auth. Remove before deploying.
-app.use('/api/debug', debugRoutes)
+mountDebugRoutes(app)
 app.use("/api/social/gifts", giftsRouter);
 app.use("/api/social/venues", venuesRoutes);
 app.use("/api/social/presence", presenceRoutes);
@@ -110,6 +111,7 @@ app.use("/api/social/chat", chatRoutes);
 app.use("/api/social/profile", socialProfileRoutes);
 app.use("/api/social/notifications", notificationsRoutes);
 app.use("/api/social/profile", profileBackgroundRoutes);
+app.use(errorHandler)
 
 
 
@@ -133,7 +135,7 @@ if (process.env.NODE_ENV !== 'test') {
   startPresenceExpirySweep(io)
 
   httpServer.listen(process.env.PORT || 4000, () => {
-    console.log(`🚀 Servidor corriendo en puerto ${process.env.PORT || 4000}`)
+    console.log("[server.js] log")
     console.log('🔌 WebSockets activos con Socket.io')
   })
 }

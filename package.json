@@ -9,7 +9,8 @@
     "start": "node backend/src/server.js",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js --passWithNoTests",
     "test:usuarios": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --no-cache --runTestsByPath backend/tests/usuarios.security.test.js",
-    "test:gifts": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --no-cache --runTestsByPath backend/tests/gifts.security.test.js"
+    "test:gifts": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --no-cache --runTestsByPath backend/tests/gifts.security.test.js",
+    "test:auth-security": "node --experimental-vm-modules node_modules/jest/bin/jest.js --runInBand --no-cache --runTestsByPath backend/tests/auth-config.security.test.js"
   },
   "keywords": [],
   "author": "",
@@ -31,6 +32,7 @@
     "uuid": "^13.0.0"
   },
   "devDependencies": {
+    "@babel/parser": "^7.28.5",
     "jest": "^29.6.1",
     "supertest": "^6.3.3"
   }

@@ -12,7 +12,7 @@ export const getPedidos = async (req, res) => {
     const result = await pedidoService.getPedidos({ page, limit, estado, id_mesa, id_cliente, from, to })
     res.status(200).json(result)
   } catch (err) {
-    console.error('Error en getPedidos:', err)
+    console.error('Error en getPedidos:')
     res.status(500).json({ error: err.message || 'Error interno' })
   }
 }
@@ -29,7 +29,7 @@ export const getPedidoById = async (req, res) => {
     const result = await pedidoService.getPedidoById(id)
     res.status(200).json(result)
   } catch (err) {
-    console.error('Error en getPedidoById:', err)
+    console.error('Error en getPedidoById:')
     if (err.message === 'Pedido no encontrado') {
       return res.status(404).json({ error: err.message })
     }
@@ -49,7 +49,7 @@ export const getPedidosDelCliente = async (req, res) => {
     const pedidos = await pedidoService.getPedidosByCliente(clienteId)
     res.json({ pedidos })
   } catch (err) {
-    console.error('Error en getPedidosDelCliente:', err)
+    console.error('Error en getPedidosDelCliente:')
     res.status(500).json({ error: err.message || 'Error interno' })
   }
 }
@@ -63,7 +63,7 @@ export const getPedidosDelCliente = async (req, res) => {
 export const createPedido = async (req, res) => {
   try {
     const data = { ...req.body }
-    console.log("Pedido recibido:", req.body);
+    console.log("Pedido recibido:");
     
     // Inject id_cliente from token if not provided, regardless of role
     if (req.user && !data.id_cliente) {
@@ -72,14 +72,14 @@ export const createPedido = async (req, res) => {
       if (userId) {
         data.id_cliente = userId
       } else {
-        console.warn('[createPedido] Could not find user ID in token payload:', req.user)
+        console.warn('[createPedido] Could not find user ID in token payload:')
       }
     }
 
     const newPedido = await pedidoService.createPedido(data)
     res.status(201).json(newPedido)
   } catch (err) {
-    console.error('Error al crear pedido:', err)
+    console.error('Error al crear pedido:')
     // Simple heuristic to distinguish bad request from server error
     if (err.message.includes('requerido') || err.message.includes('inválido') || err.message.includes('no existe') || err.message.includes('no encontrado')) {
       return res.status(400).json({ error: err.message })
@@ -100,7 +100,7 @@ export const updatePedido = async (req, res) => {
     const updatedPedido = await pedidoService.updatePedido(id, req.body)
     res.status(200).json(updatedPedido)
   } catch (err) {
-    console.error('Error al actualizar pedido:', err)
+    console.error('Error al actualizar pedido:')
     if (err.message === 'Pedido no encontrado') {
       return res.status(404).json({ error: err.message })
     }
@@ -123,7 +123,7 @@ export const updatePedidoEstado = async (req, res) => {
     const result = await pedidoService.updatePedidoEstado(id, req.body.estado)
     res.status(200).json(result.pedido || result)
   } catch (err) {
-    console.error('Error en updatePedidoEstado:', err)
+    console.error('Error en updatePedidoEstado:')
     if (err.message === 'Pedido no encontrado') {
       return res.status(404).json({ error: err.message })
     }
@@ -146,7 +146,7 @@ export const updatePedidoMesa = async (req, res) => {
     const result = await pedidoService.updatePedidoMesa(id, req.body.id_mesa)
     res.status(200).json(result)
   } catch (err) {
-    console.error('Error en updatePedidoMesa:', err)
+    console.error('Error en updatePedidoMesa:')
     if (err.message === 'Mesa no encontrada') {
       return res.status(400).json({ error: err.message })
     }
@@ -169,7 +169,7 @@ export const updatePedidoPago = async (req, res) => {
     const result = await pedidoService.updatePedidoPago(id, req.body.pago)
     res.status(200).json(result)
   } catch (err) {
-    console.error('Error en updatePedidoPago:', err)
+    console.error('Error en updatePedidoPago:')
     if (err.message === 'Pedido no encontrado') {
       return res.status(404).json({ error: err.message })
     }
@@ -192,7 +192,7 @@ export const deletePedido = async (req, res) => {
     await pedidoService.deletePedido(id)
     res.status(204).send()
   } catch (err) {
-    console.error('Error al eliminar pedido:', err)
+    console.error('Error al eliminar pedido:')
     res.status(400).json({ error: err.message })
   }
 }

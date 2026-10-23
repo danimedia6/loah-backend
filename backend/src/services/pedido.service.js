@@ -99,7 +99,7 @@ class PedidoService {
     .order("fecha_pedido", { ascending: false });
 
   if (error) {
-    console.error("[Supabase] Error al obtener pedidos del cliente:", error);
+    console.error("[Supabase] Error al obtener pedidos del cliente:");
     throw new Error("Error obteniendo pedidos");
   }
 

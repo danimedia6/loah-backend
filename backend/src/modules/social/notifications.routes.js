@@ -31,7 +31,7 @@ router.get("/", authMiddleware, async (req, res) => {
 
     res.json(notifications);
   } catch (err) {
-    console.error("Error cargando notificaciones:", err);
+    console.error("Error cargando notificaciones:");
     res.status(500).json({ error: "Error cargando notificaciones" });
   }
 });
@@ -51,7 +51,7 @@ router.patch("/read", authMiddleware, async (req, res) => {
 
     res.json(result);
   } catch (err) {
-    console.error("Error cargando notificaciones:", err);
+    console.error("Error cargando notificaciones:");
     res.status(500).json({
         error: "Error cargando notificaciones",
         details: err?.message ?? err,
