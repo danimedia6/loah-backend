@@ -61,7 +61,8 @@ export const createProducto = async (req, res) => {
     if (err.message.includes('requerido') || err.message.includes('inválido')) {
       return res.status(400).json({ error: err.message })
     }
-    res.status(err.statusCode || 500).json({ error: err.message || 'Error interno' })
+    res.status(err.statusCode || 500).json({ error: err.statusCode && err.statusCode < 500
+      ? err.message : 'Error interno creando producto' })
   }
 }
 
@@ -82,7 +83,8 @@ export const updateProducto = async (req, res) => {
     if (err.message.includes('Ya existe')) {
       return res.status(409).json({ error: err.message })
     }
-    res.status(err.statusCode || 500).json({ error: err.message || 'Error interno' })
+    res.status(err.statusCode || 500).json({ error: err.statusCode && err.statusCode < 500
+      ? err.message : 'Error interno actualizando producto' })
   }
 }
 

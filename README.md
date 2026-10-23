@@ -217,9 +217,16 @@ Tarea de compatibilidad pendiente, fuera del Bloque 0.1:
 | `PATCH` | `/:id/pago` | Actualizar estado de pago | Staff/Admin | `{ pago: 'pagado' }` |
 
 ### Pagos (`/api/pagos`)
+**Bloque 0.4:** los pagos heredados estan contenidos. Crear cobros, modificar
+pagos, editar/eliminar pedidos por la ruta generica y procesar efectos de
+webhooks devuelve `503 LEGACY_PAYMENTS_UNAVAILABLE`. No usar estas rutas para
+cobros reales. Los Gifts mantienen la suspension del Bloque 0.2.
+Ver [informe de seguridad 0.4](backend/tests/HARDENING_SECURITY.md) para contratos,
+limites, proxy de Render y requisitos antes de volver a habilitar pagos.
+
 | Método | Endpoint | Descripción | Auth | Body |
 | :--- | :--- | :--- | :--- | :--- |
-| `POST` | `/create` | Iniciar transacción Wompi | Token | `{ amount_in_cents, currency, customer_email, reference }` |
+| `POST` | `/create` | Suspendido: `503 LEGACY_PAYMENTS_UNAVAILABLE` | Token | `{ id_pedido }` |
 | `POST` | `/webhooks/wompi` | Webhook de Wompi | Público | (Payload de Wompi) |
 
 ### Auditoría (`/api/auditoria`)

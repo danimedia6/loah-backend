@@ -1,5 +1,5 @@
 import storiesService from "./stories.service.js";
-import multer from "multer";
+import { createValidatedUpload } from '../../middlewares/validated-upload.js';
 import { getIO } from '../../sockets/socketStore.js'
 import { NotificationsService } from "./notifications.service.js";
 import supabase from "../../config/supabaseClient.js";
@@ -31,14 +31,7 @@ async function getReactionActorIdentity(actorId) {
 }
 
 
-export const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50 MB
-  fileFilter: (_, file, cb) => {
-    const allowed = ["image/jpeg", "image/png", "image/webp", "video/mp4", "video/quicktime"];
-    allowed.includes(file.mimetype) ? cb(null, true) : cb(new Error("Formato no permitido"));
-  },
-});
+export const upload = createValidatedUpload({ maxBytes: 50 * 1024 * 1024, allowVideo: true });
 
 export async function getPeopleWithStories(req, res) {
   try {
@@ -152,7 +145,7 @@ export async function uploadStory(req, res) {
     return res.status(201).json(story);
   } catch (error) {
     console.error("Error uploadStory:");
-    return res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: "Error interno subiendo historia" });
   }
 }
 

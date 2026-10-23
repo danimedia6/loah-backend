@@ -5,6 +5,7 @@ import mesaRepository from '../repositories/mesa.repository.js'
 import auditoriaService from './auditoria.service.js'
 import { calcularTotal } from '../utils/calculateTotal.js'
 import supabase from "../config/supabaseClient.js"
+import { assertLegacyPaymentsAvailable } from './legacy-payments.guard.js'
 
 /**
  * Servicio para la lógica de negocio de Pedidos.
@@ -194,71 +195,8 @@ class PedidoService {
    * @throws {Error} Si el pedido no existe o los datos son inválidos.
    */
   async updatePedido(id, updates) {
-    let { id_cliente, id_mesa, estado, total, items, pago } = updates
-
-    if (estado !== undefined) estado = this.normalizeEstado(estado)
-
-    if (pago !== undefined) {
-      const allowedPago = ['pagado', 'no_pagado']
-      if (!allowedPago.includes(pago)) throw new Error(`pago no válido: ${pago}`)
-    }
-
-    const existingPedido = await pedidoRepository.findById(id)
-    if (!existingPedido) throw new Error('Pedido no encontrado')
-
-    const previousEstado = existingPedido.estado
-
-    // Handle items update
-    if (items !== undefined) {
-      if (!Array.isArray(items) || items.length === 0) throw new Error('items debe ser un arreglo con al menos un elemento')
-      
-      const processedItems = await this._processItems(items)
-      items = processedItems // Update items with processed ones (prices, names)
-
-      const expectedTotal = calcularTotal(items)
-      if (total !== undefined && total !== null) {
-        const totalNum = Number(total)
-        if (Number.isNaN(totalNum) || Math.abs(totalNum - expectedTotal) > 0.01) {
-          throw new Error(`Total inválido. Esperado: ${expectedTotal}`)
-        }
-      }
-      total = expectedTotal
-    }
-
-    // Verify FKs if provided
-    if (id_cliente) {
-      const cliente = await usuarioRepository.findById(id_cliente)
-      if (!cliente) throw new Error('id_cliente no existe')
-    }
-    if (id_mesa) {
-      const maybeId = Number(id_mesa)
-      if (Number.isNaN(maybeId) || maybeId <= 0) throw new Error('id_mesa inválido')
-      const mesa = await mesaRepository.findById(maybeId)
-      if (!mesa) throw new Error('Mesa no encontrada')
-      id_mesa = mesa.id_mesa
-    }
-
-    const updatePayload = {}
-    if (id_cliente !== undefined) updatePayload.id_cliente = id_cliente
-    if (id_mesa !== undefined) updatePayload.id_mesa = id_mesa
-    if (estado !== undefined) updatePayload.estado = estado
-    if (total !== undefined) updatePayload.total = total
-    if (pago !== undefined) updatePayload.pago = pago
-    if (items !== undefined) updatePayload.items = items
-
-    const updatedPedido = await pedidoRepository.update(id, updatePayload)
-
-    // Log state change
-    if (updatedPedido && previousEstado !== updatedPedido.estado) {
-      await auditoriaService.logEvento({ 
-        id_pedido: id, 
-        estado_anterior: previousEstado, 
-        estado_nuevo: updatedPedido.estado, 
-        descripcion: `Cambio de estado ${previousEstado} → ${updatedPedido.estado}` 
-      })
-    }
-
-    return updatedPedido
+    // This unrestricted legacy path could change payment, owner and purchase amount.
+    assertLegacyPaymentsAvailable()
   }
 
   /**
@@ -285,6 +223,10 @@ class PedidoService {
 
     const pedido = await pedidoRepository.findById(id)
     if (!pedido) throw new Error('Pedido no encontrado')
+
+    if (nuevoEstado === 'entregado' && pedido.pago !== 'pagado') {
+      assertLegacyPaymentsAvailable()
+    }
 
     const estadoActual = pedido.estado
     if (estadoActual === nuevoEstado) return { message: 'Estado sin cambios', pedido }
@@ -339,15 +281,7 @@ class PedidoService {
    * @throws {Error} Si el estado de pago no es válido.
    */
   async updatePedidoPago(id, pago) {
-    if (pago === undefined || pago === null) throw new Error('pago es requerido')
-    
-    const allowedPago = ['pagado', 'no_pagado']
-    if (!allowedPago.includes(pago)) throw new Error(`pago no válido: ${pago}`)
-
-    const updated = await pedidoRepository.update(id, { pago })
-    if (!updated) throw new Error('Pedido no encontrado')
-    
-    return updated
+    assertLegacyPaymentsAvailable()
   }
 
   /**
@@ -356,7 +290,8 @@ class PedidoService {
    * @returns {Promise<void>}
    */
   async deletePedido(id) {
-    return await pedidoRepository.delete(id)
+    // pagos.id_pedido uses ON DELETE CASCADE in the versioned schema.
+    assertLegacyPaymentsAvailable()
   }
 
   // --- Private Helpers ---

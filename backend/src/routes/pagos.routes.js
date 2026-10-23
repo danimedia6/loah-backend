@@ -12,6 +12,6 @@ router.post('/create', authMiddleware, validate(createPagoSchema), createPayment
 // Webhook (public, verified by signature)
 // Note: Ensure express.raw() is used for this route in server.js if needed, 
 // or handle raw body parsing in the controller if middleware allows.
-router.post('/webhooks/wompi', wompiWebhook)
+router.post('/webhooks/wompi', express.raw({ type: 'application/json', limit: '64kb' }), wompiWebhook)
 
 export default router

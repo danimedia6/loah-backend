@@ -1,20 +1,11 @@
 import { Router } from "express";
-import multer from "multer";
+import { createValidatedUpload } from '../../middlewares/validated-upload.js';
 import supabase from "../../config/supabaseClient.js";
 import { authMiddleware } from "../../middlewares/auth.middleware.js";
 
 const router = Router();
 
-const upload = multer({
-  storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter: (_, file, cb) => {
-    const allowed = ["image/jpeg", "image/png", "image/webp"];
-    allowed.includes(file.mimetype)
-      ? cb(null, true)
-      : cb(new Error("Formato no permitido"));
-  },
-});
+const upload = createValidatedUpload({ maxFiles: 6 });
 
 const getAuthUserId = (req) =>
   req.user?.id_usuario ??
@@ -77,7 +68,6 @@ router.post("/background", authMiddleware, upload.single("file"), async (req, re
     console.error("Error subiendo fondo de tarjeta:");
     res.status(500).json({
       error: "Error subiendo fondo de tarjeta",
-      details: err?.message ?? err,
     });
   }
 });
@@ -139,7 +129,6 @@ router.post("/avatar", authMiddleware, upload.single("file"), async (req, res) =
     console.error("Error subiendo avatar social:");
     res.status(500).json({
       error: "Error subiendo avatar social",
-      details: err?.message ?? err,
     });
   }
 });
@@ -224,7 +213,6 @@ router.post(
       console.error("Error subiendo galería social:");
       res.status(500).json({
         error: "Error subiendo galería social",
-        details: err?.message ?? err,
       });
     }
   }

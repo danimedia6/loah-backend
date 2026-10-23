@@ -1,4 +1,5 @@
 import { authenticateAccessToken } from '../services/auth-context.service.js'
+import { limitAuthenticatedRequest } from './abuse-protection.js'
 
 /**
  * Middleware para verificar el token JWT.
@@ -13,6 +14,7 @@ export const authMiddleware = async (req, res, next) => {
     if (!token) return res.status(401).json({ error: 'No autorizado' })
 
     req.user = await authenticateAccessToken(token)
+    if (!limitAuthenticatedRequest(req, res)) return
     next()
   } catch (err) {
     return res.status(err.statusCode || 401).json({ error: err.message, code: err.code || 'AUTH_REQUIRED' })

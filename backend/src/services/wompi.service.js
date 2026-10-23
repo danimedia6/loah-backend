@@ -1,113 +1,76 @@
-import crypto from 'crypto'
+import { createHash, timingSafeEqual } from 'node:crypto'
+import { assertLegacyPaymentsAvailable } from './legacy-payments.guard.js'
 
-const WOMPI_KEY = process.env.WOMPI_KEY || ''
-
-/**
- * Crea una sesión de pago en Wompi (placeholder).
- * Si `WOMPI_KEY` está presente, aquí es donde se haría la llamada HTTP a la API de Wompi.
- * Por ahora devuelve una respuesta simulada para permitir desarrollo local.
- * 
- * @param {Object} params - Parámetros de pago.
- * @param {number} params.pedidoId - ID del pedido.
- * @param {number} params.amount - Monto del pago.
- * @param {string} [params.currency='COP'] - Moneda.
- * @param {Object} [params.metadata={}] - Metadatos adicionales.
- * @returns {Promise<Object>} Datos de la transacción.
- */
-export const createPayment = async ({ pedidoId, amount, currency = 'COP', metadata = {} }) => {
-  // If WOMPI_KEY is not configured, return a simulated response so dev flows keep working
-  if (!WOMPI_KEY) {
-    const transaction_id = `TRX-${Date.now()}`
-    const checkout_url = `https://pagos.sandbox.wompi.co/checkout/${transaction_id}`
-    return {
-      transaction_id,
-      checkout_url,
-      amount,
-      currency,
-      metadata,
-      raw: { simulated: true }
-    }
-  }
-
-  // When a key is present, attempt a real call to Wompi (sandbox by default)
-  try {
-    const fetch = (await import('node-fetch')).default
-    const isSandbox = (process.env.WOMPI_SANDBOX || 'true').toLowerCase() === 'true'
-    const base = isSandbox ? 'https://sandbox.wompi.co/v1' : 'https://production.wompi.co/v1'
-    const url = `${base}/transactions`
-
-    const payload = {
-      amount_in_cents: Math.round(Number(amount || 0) * 100),
-      currency: currency || 'COP',
-      reference: `pedido_${pedidoId}`,
-      redirect_url: process.env.PAYMENTS_CALLBACK_URL || process.env.CLIENT_URL || null,
-      metadata: { pedidoId, ...metadata }
-    }
-
-    const resp = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${WOMPI_KEY}`
-      },
-      body: JSON.stringify(payload),
-      timeout: 10000
-    })
-
-    const body = await resp.json()
-
-    // Attempt to extract transaction id and checkout url from usual Wompi response shapes
-    const transaction_id = body?.data?.id || body?.data?.object?.payment?.id || null
-    const checkout_url = body?.data?.attributes?.checkout_url || body?.data?.object?.payment?.checkout_url || null
-
-    return {
-      transaction_id,
-      checkout_url,
-      amount,
-      currency,
-      metadata,
-      raw: body
-    }
-  } catch (err) {
-    // On failure, fall back to a simulated response but include the error in `raw` for debugging
-    const transaction_id = `TRX-ERR-${Date.now()}`
-    const checkout_url = `https://pagos.sandbox.wompi.co/checkout/${transaction_id}`
-    return {
-      transaction_id,
-      checkout_url,
-      amount,
-      currency,
-      metadata,
-      raw: { simulated: true, error: String(err) }
-    }
-  }
+function webhookError(statusCode, code, message) {
+  return Object.assign(new Error(message), { statusCode, code })
 }
 
-/**
- * Verifica la firma del webhook usando HMAC-SHA256 con el secreto `WOMPI_SIGNATURE_SECRET`.
- * Nota: adaptar si la pasarela usa otro algoritmo o esquema.
- * 
- * @param {Buffer} rawBodyBuffer - Cuerpo crudo de la petición.
- * @param {string} signatureHeader - Cabecera de firma.
- * @returns {Object} Resultado de la verificación { ok, computed, incoming, error }.
- */
-export const verifyWebhookSignature = (rawBodyBuffer, signatureHeader) => {
-  const secret = process.env.WOMPI_SIGNATURE_SECRET
-  if (!secret) {
-    // If no secret configured, do not verify (development). Caller should still proceed cautiously.
-    return { ok: true, reason: 'no-secret' }
-  }
+export const createPayment = async () => assertLegacyPaymentsAvailable()
 
-  try {
-    const hmac = crypto.createHmac('sha256', secret)
-    hmac.update(rawBodyBuffer)
-    const computed = hmac.digest('hex')
-    const incoming = (signatureHeader || '').trim()
-    const ok = computed === incoming
-    return { ok, computed, incoming }
-  } catch (err) {
-    return { ok: false, error: err.message }
+// Wompi Colombia signs selected data values + timestamp + EVENT secret, not raw-body HMAC.
+export function verifyWebhookSignature(rawBody, headerChecksum) {
+  const secret = process.env.WOMPI_EVENTS_SECRET
+  if (!secret || !secret.trim()) {
+    throw webhookError(503, 'WOMPI_EVENTS_UNAVAILABLE', 'Validacion de eventos no disponible')
   }
+  let payload
+  try {
+    payload = Buffer.isBuffer(rawBody) ? JSON.parse(rawBody.toString('utf8')) : rawBody
+  } catch {
+    throw webhookError(400, 'WOMPI_INVALID_PAYLOAD', 'Evento invalido')
+  }
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload) ||
+      !Number.isSafeInteger(payload.timestamp) || payload.timestamp <= 0 ||
+      !payload.data || typeof payload.data !== 'object' || Array.isArray(payload.data)) {
+    throw webhookError(400, 'WOMPI_INVALID_PAYLOAD', 'Evento invalido')
+  }
+  const properties = payload.signature?.properties
+  const incoming = headerChecksum || payload.signature?.checksum
+  if (!Array.isArray(properties) || !properties.length || properties.length > 32 ||
+      typeof incoming !== 'string' || !/^[a-f\d]{64}$/i.test(incoming)) {
+    throw webhookError(400, 'WOMPI_INVALID_SIGNATURE', 'Firma de evento invalida')
+  }
+  const values = properties.map((property) => {
+    if (typeof property !== 'string' || property.length > 200 ||
+        !/^[a-zA-Z0-9_]+(?:\.[a-zA-Z0-9_]+)*$/.test(property)) {
+      throw webhookError(400, 'WOMPI_INVALID_SIGNATURE', 'Firma de evento invalida')
+    }
+    let value = payload.data
+    for (const part of property.split('.')) {
+      if (['__proto__', 'prototype', 'constructor'].includes(part) ||
+          value === null || typeof value !== 'object' || !Object.hasOwn(value, part)) {
+        throw webhookError(400, 'WOMPI_INVALID_SIGNATURE', 'Firma de evento invalida')
+      }
+      value = value[part]
+    }
+    if (!['string', 'number', 'boolean'].includes(typeof value) ||
+        (typeof value === 'number' && !Number.isFinite(value))) {
+      throw webhookError(400, 'WOMPI_INVALID_SIGNATURE', 'Firma de evento invalida')
+    }
+    return String(value)
+  })
+  const expected = createHash('sha256').update(values.join('') + payload.timestamp + secret).digest()
+  if (!timingSafeEqual(expected, Buffer.from(incoming, 'hex')) ||
+      (headerChecksum && payload.signature?.checksum &&
+        String(headerChecksum).toLowerCase() !== String(payload.signature.checksum).toLowerCase())) {
+    throw webhookError(400, 'WOMPI_INVALID_SIGNATURE', 'Firma de evento invalida')
+  }
+  const tx = payload.data.transaction
+  const environment = process.env.WOMPI_ENV === 'production' ? 'prod'
+    : process.env.WOMPI_ENV === 'sandbox' ? 'test' : null
+  if (!environment) throw webhookError(503, 'WOMPI_EVENTS_UNAVAILABLE', 'Validacion de eventos no disponible')
+  if (payload.event !== 'transaction.updated' || payload.environment !== environment ||
+      !tx || typeof tx.id !== 'string' || !tx.id || tx.id.length > 200 ||
+      typeof tx.reference !== 'string' || !tx.reference || tx.reference.length > 200 ||
+      !Number.isSafeInteger(tx.amount_in_cents) || tx.amount_in_cents <= 0 ||
+      tx.currency !== 'COP' || !['PENDING', 'APPROVED', 'DECLINED', 'VOIDED', 'ERROR'].includes(tx.status)) {
+    throw webhookError(400, 'WOMPI_INVALID_PAYLOAD', 'Evento invalido')
+  }
+  if (!['transaction.id', 'transaction.status', 'transaction.amount_in_cents']
+    .every((field) => properties.includes(field))) {
+    throw webhookError(400, 'WOMPI_INVALID_SIGNATURE', 'Firma de evento invalida')
+  }
+  return { ok: true, payload }
 }
 
 export default { createPayment, verifyWebhookSignature }

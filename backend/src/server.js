@@ -8,7 +8,6 @@ import mesasRoutes from './routes/mesas.route.js'
 //import paymentsRoutes from './routes/payments.routes.js'
 //import paymentsController from './controllers/payments.controller.js'
 import pagosRoutes from './routes/pagos.routes.js'
-import { wompiWebhook } from './controllers/pagos.controller.js'
 import pedidosRoutes from './routes/pedidos.routes.js'
 import productosRoutes from './routes/productos.routes.js'
 import usuariosRoutes from './routes/usuarios.routes.js'
@@ -32,6 +31,7 @@ import { setupSocialSocket } from './sockets/social.socket.js'
 import { setIO } from './sockets/socketStore.js'
 import notificationsRoutes from "./modules/social/notifications.routes.js";
 import profileBackgroundRoutes from "./modules/social/profile-background.routes.js";
+import { compileTrustedProxies, createHttpAbuseProtection, createSocketProtection, requestIp } from './middlewares/abuse-protection.js'
 
 
 
@@ -42,6 +42,9 @@ import profileBackgroundRoutes from "./modules/social/profile-background.routes.
  */
 
 const app = express()
+const trustedProxies = compileTrustedProxies(process.env.TRUSTED_PROXY_CIDRS)
+app.set('trust proxy', trustedProxies)
+app.disable('x-powered-by')
 
 // Request logging
 app.use(createRequestLogger())
@@ -81,12 +84,13 @@ const corsOptions = {
 app.use(cors(corsOptions))
 
 // Necesario para Webhook de Wompi: recibir raw body
-app.use('/api/wompi/webhook', express.raw({ type: 'application/json' }))
+app.use(['/api/wompi/webhook', '/api/pagos/webhooks/wompi'], express.raw({ type: 'application/json', limit: '64kb' }))
 
 
 // Note: avoid app.options('*', ...) because path-to-regexp rejects '*'.
 // app.use(cors(corsOptions)) is sufficient to handle preflight requests.
 app.use(express.json())
+app.use(createHttpAbuseProtection())
 
 app.use('/api/mesas', mesasRoutes)
 //app.use('/api/payments', paymentsRoutes)
@@ -123,8 +127,11 @@ app.use(errorHandler)
 
 const httpServer = http.createServer(app)
 
+const socketProtection = createSocketProtection()
 const io = new Server(httpServer, {
   cors: corsOptions,
+  maxHttpBufferSize: 64 * 1024,
+  allowRequest: (req, callback) => callback(null, socketProtection.allowHandshake(requestIp(req, trustedProxies))),
 })
 
 setIO(io)

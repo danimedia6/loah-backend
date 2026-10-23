@@ -4,7 +4,8 @@ import jwt from 'jsonwebtoken'
 import { JWT_SECRET } from '../config/security.config.js'
 
 // Simple in-memory rate limiter for login attempts per email
-const failedLogins = {} // { [email]: { count, firstAttemptTs } }
+const failedLogins = new Map()
+const MAX_TRACKED_IDENTITIES = 10000
 const MAX_ATTEMPTS = 5
 const WINDOW_MS = 15 * 60 * 1000 // 15 minutes
 
@@ -44,14 +45,14 @@ export const login = async (req, res) => {
     
     // Rate limiting by email
     const now = Date.now()
-    const entry = failedLogins[correo]
+    const entry = failedLogins.get(correo)
     if (entry) {
       if (now - entry.firstAttemptTs < WINDOW_MS && entry.count >= MAX_ATTEMPTS) {
         return res.status(429).json({ error: 'Demasiados intentos. Intenta más tarde.' })
       }
       if (now - entry.firstAttemptTs >= WINDOW_MS) {
         // reset window
-        delete failedLogins[correo]
+        failedLogins.delete(correo)
       }
     }
 
@@ -70,13 +71,22 @@ export const login = async (req, res) => {
       })
 
       // on successful login reset failed attempts for this email
-      if (failedLogins[correo]) delete failedLogins[correo]
+      failedLogins.delete(correo)
 
       res.status(200).json({ token, usuario })
     } catch (authError) {
       // record failed attempt
-      if (!failedLogins[correo]) failedLogins[correo] = { count: 1, firstAttemptTs: now }
-      else failedLogins[correo].count++
+      if (!failedLogins.has(correo)) {
+        if (failedLogins.size >= MAX_TRACKED_IDENTITIES) {
+          for (const [email, failure] of failedLogins) {
+            if (now - failure.firstAttemptTs >= WINDOW_MS) failedLogins.delete(email)
+          }
+          if (failedLogins.size >= MAX_TRACKED_IDENTITIES) {
+            return res.status(429).json({ error: 'Demasiados intentos. Intenta mas tarde.', code: 'RATE_LIMITED' })
+          }
+        }
+        failedLogins.set(correo, { count: 1, firstAttemptTs: now })
+      } else failedLogins.get(correo).count++
       
       return res.status(401).json({ error: 'Credenciales inválidas' })
     }

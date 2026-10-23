@@ -178,6 +178,9 @@ describe('fail-closed boot configuration', () => {
       const connected = await request(httpServer).get(transportUrl)
       expect(connected.text).toContain('40{')
       expect(io.sockets.adapter.rooms.get('user:8')?.size).toBe(1)
+      // This fixture speaks Engine.IO directly; close its transport like a real client.
+      await request(httpServer).post(transportUrl).set('Content-Type', 'text/plain').send('1').expect(200)
+      expect(io.sockets.adapter.rooms.get('user:8')).toBeUndefined()
     } finally {
       await new Promise((resolve) => io.close(resolve))
     }

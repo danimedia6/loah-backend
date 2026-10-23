@@ -3,6 +3,7 @@ import socialService from '../modules/social/social.service.js'
 import chatService from '../modules/social/chat.service.js'
 import { setSocketInstance } from './socketInstance.js'
 import { emitPresenceUpdateForVenue } from './presenceEmitter.js'
+import { createSocketProtection } from '../middlewares/abuse-protection.js'
 
 const activeSocketsByUserId = new Map()
 
@@ -49,6 +50,7 @@ function isAdminForVenue(user, venueId) {
 }
 
 export function setupSocialSocket(io) {
+  const protection = createSocketProtection()
   setSocketInstance(io)
   io.use(async (socket, next) => {
     try {
@@ -77,6 +79,19 @@ export function setupSocialSocket(io) {
   })
 
   io.on('connection', (socket) => {
+    if ((activeSocketsByUserId.get(String(socket.data.user_id))?.size || 0) >= 8) {
+      socket.emit('socket:error', { code: 'SOCKET_LIMITED', error: 'Demasiadas conexiones' })
+      socket.disconnect(true)
+      return
+    }
+    socket.use?.(([event, ...args], next) => {
+      if (protection.allowPacket(socket.data.user_id)) return next()
+      const payload = { code: 'RATE_LIMITED', error: 'Demasiados eventos; intenta mas tarde' }
+      const ack = args[args.length - 1]
+      if (typeof ack === 'function') ack({ ok: false, ...payload })
+      else socket.emit('socket:error', payload)
+      // Deliberately do not dispatch the packet to a business handler.
+    })
     addActiveSocket(socket.data.user_id, socket.id)
 
     console.log('🔌 Socket autenticado:')

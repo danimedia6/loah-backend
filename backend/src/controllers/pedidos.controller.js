@@ -63,6 +63,7 @@ export const getPedidosDelCliente = async (req, res) => {
 export const createPedido = async (req, res) => {
   try {
     const data = { ...req.body }
+    if (req.user?.rol === 'cliente') data.id_cliente = req.user.id
     console.log("Pedido recibido:");
     
     // Inject id_cliente from token if not provided, regardless of role
@@ -101,6 +102,9 @@ export const updatePedido = async (req, res) => {
     res.status(200).json(updatedPedido)
   } catch (err) {
     console.error('Error al actualizar pedido:')
+    if (err.code === 'LEGACY_PAYMENTS_UNAVAILABLE') {
+      return res.status(503).json({ error: err.message, code: err.code })
+    }
     if (err.message === 'Pedido no encontrado') {
       return res.status(404).json({ error: err.message })
     }
@@ -124,6 +128,9 @@ export const updatePedidoEstado = async (req, res) => {
     res.status(200).json(result.pedido || result)
   } catch (err) {
     console.error('Error en updatePedidoEstado:')
+    if (err.code === 'LEGACY_PAYMENTS_UNAVAILABLE') {
+      return res.status(503).json({ error: err.message, code: err.code })
+    }
     if (err.message === 'Pedido no encontrado') {
       return res.status(404).json({ error: err.message })
     }
@@ -170,6 +177,9 @@ export const updatePedidoPago = async (req, res) => {
     res.status(200).json(result)
   } catch (err) {
     console.error('Error en updatePedidoPago:')
+    if (err.code === 'LEGACY_PAYMENTS_UNAVAILABLE') {
+      return res.status(503).json({ error: err.message, code: err.code })
+    }
     if (err.message === 'Pedido no encontrado') {
       return res.status(404).json({ error: err.message })
     }
@@ -193,6 +203,9 @@ export const deletePedido = async (req, res) => {
     res.status(204).send()
   } catch (err) {
     console.error('Error al eliminar pedido:')
+    if (err.code === 'LEGACY_PAYMENTS_UNAVAILABLE') {
+      return res.status(503).json({ error: err.message, code: err.code })
+    }
     res.status(400).json({ error: err.message })
   }
 }
